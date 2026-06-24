@@ -33,7 +33,7 @@ import { initFormEditor } from './formEditor.js';
 import { renderUserDashboardEnhanced, renderAdminAnalyticsDashboard, renderTabbedApplicationWorkspace } from './src/modules/advancedDashboard.js';
 import { renderTaskReviewPanel } from './src/modules/taskReviewManager.js';
 
-// Global Fetch Hook to inject custom session headers
+// Global Fetch Hook to inject custom session headers and route API calls
 const originalFetch = window.fetch;
 window.fetch = function(url, options) {
   options = options || {};
@@ -45,6 +45,16 @@ window.fetch = function(url, options) {
       options.headers['X-User-Role'] = user.role;
     }
   } catch (e) {}
+
+  // Prefix URL with backend address if VITE_RENDER_BACKEND is configured and it is an API call
+  if (url && (url.startsWith('/api/') || url === '/api')) {
+    const backendUrl = import.meta.env.VITE_RENDER_BACKEND;
+    if (backendUrl) {
+      const base = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
+      url = base + url;
+    }
+  }
+
   return originalFetch(url, options);
 };
 
