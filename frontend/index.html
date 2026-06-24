@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SRF Management Platform — DPIIT</title>
+  <meta name="description" content="States Startup Ranking Framework — Dynamic compliance portal for DPIIT evaluators and State Startup Cells.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- Background Decoration -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       1. LANDING / AUTH SCREEN
+       ═══════════════════════════════════════════════════════ -->
+  <div id="login-screen" class="landing-wrapper">
+
+    <!-- Landing Nav -->
+    <header class="landing-nav">
+      <div class="landing-logo">
+        <img src="/ap_emblem.svg" class="landing-logo-img" alt="AP Govt Emblem">
+        <span>SRF Management Platform</span>
+      </div>
+      <div class="landing-nav-links">
+        <button id="nav-btn-home" class="landing-nav-btn active">Home</button>
+        <button id="nav-btn-login" class="landing-nav-btn">Sign In</button>
+      </div>
+    </header>
+
+    <div class="landing-container">
+
+      <!-- VIEW A: HERO -->
+      <section id="landing-hero-view" class="landing-view fade-in-up">
+        <div class="hero-content">
+          <div class="hero-brand-group">
+            <div class="hero-logo-container">
+              <div class="hero-emblem-glow"></div>
+              <img src="/ap_emblem.svg" class="hero-emblem" alt="Government of Andhra Pradesh Emblem">
+            </div>
+            <div class="badge-glow">DPIIT Initiatives 2026</div>
+          </div>
+          <h1>Andhra Pradesh Startup Ranking<br>Framework Repository</h1>
+          <p class="hero-subtitle">A platform to collect assign SRF Questionaries to Andhra Pradesh State Officials, Manage multiple State Startup Ranking Framework.</p>
+          <div class="hero-actions">
+            <button id="btn-hero-user-login" class="btn btn-primary btn-lg">User Login</button>
+            <button id="btn-hero-admin-login" class="btn btn-secondary btn-lg">Admin Login</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW B: LOGIN -->
+      <section id="landing-login-view" class="landing-view hidden slide-in-right">
+        <div class="auth-card">
+          <div class="auth-card-header">
+            <h2 id="login-view-title">Portal Sign In</h2>
+            <p id="login-view-subtitle">Enter your credentials to access the secure dashboard.</p>
+          </div>
+          <form id="login-form">
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" id="username" autocomplete="off" required placeholder="Enter your username">
+            </div>
+            <div class="form-group" style="position: relative;">
+              <label for="password">Password</label>
+              <div style="position: relative; display: flex; align-items: center;">
+                <input type="password" id="password" required placeholder="••••••••" style="width: 100%; padding-right: 40px;">
+                <button type="button" id="btn-toggle-password" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; padding: 4px;">
+                  <svg id="eye-icon-visible" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg id="eye-icon-hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block btn-lg" style="margin-top:10px;">Sign In</button>
+            <button type="button" class="btn btn-secondary btn-block btn-back-landing" style="margin-top:8px;">← Return to Home</button>
+          </form>
+        </div>
+      </section>
+
+
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       2. PORTAL SCREEN
+       ═══════════════════════════════════════════════════════ -->
+  <div id="portal-screen" class="portal-wrapper hidden">
+
+    <!-- Top Navigation Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-group">
+          <div class="logo-small" style="background:#fff; border-radius:50%; padding:2px; box-shadow:0 1px 3px rgba(15,23,42,0.1); width:24px; height:24px; display:flex; align-items:center; justify-content:center;">
+            <img src="/ap_emblem.svg" alt="AP Govt Logo" style="width:100%; height:100%; object-fit:contain; border-radius:50%;">
+          </div>
+          <span class="logo-title" id="portal-logo-title">SRF Platform</span>
+        </div>
+        <button id="global-back-btn" class="btn btn-outline btn-sm hidden" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; height: 32px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>
+        <span class="divider tab-divider"></span>
+
+        <!-- Portal Navigation Tabs -->
+        <div class="topbar-nav-tabs" id="topbar-nav-tabs">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Global Search -->
+        <div class="topbar-search-container hidden">
+          <input type="text" id="top-search-input" placeholder="Search applications...">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+
+        <!-- Notification Bell -->
+        <div class="notification-bell" id="notification-bell">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="notification-count hidden" id="notif-count">0</span>
+        </div>
+
+        <!-- User Info Bubble -->
+        <div class="user-info-bubble" id="user-info-bubble">
+          <div class="user-avatar" id="user-avatar">U</div>
+          <div class="user-meta">
+            <span class="user-name" id="user-display-name">User</span>
+            <span class="user-role-tag" id="user-role-tag">Role</span>
+          </div>
+        </div>
+
+        <button id="btn-change-pwd" class="btn btn-outline btn-sm icon-btn" style="margin-right:8px;">
+          <span>Change Password</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>
+        <button id="btn-logout" class="btn btn-outline btn-sm icon-btn">
+          <span>Sign Out</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="portal-body">
+
+      <!-- Left Sidebar -->
+      <aside class="sidebar" id="main-sidebar">
+        <div class="sidebar-header">
+          <h2 id="sidebar-title">Navigation</h2>
+        </div>
+        <nav class="sidebar-nav" id="sidebar-nav-container">
+          <!-- Rendered dynamically -->
+        </nav>
+        <div class="sidebar-footer" id="sidebar-footer">
+          <!-- Rendered dynamically -->
+        </div>
+      </aside>
+
+      <!-- Main Workspace -->
+      <main class="workspace" id="main-workspace">
+
+        <!-- ADMIN PANEL -->
+        <div id="admin-panel" class="workspace-panel hidden">
+
+          <!-- VIEW: ANALYTICS DASHBOARD -->
+          <div id="admin-analytics-view" class="hidden">
+            <!-- Rendered by advancedDashboard.js -->
+          </div>
+
+          <!-- VIEW: EDITION CARDS DASHBOARD -->
+          <div id="admin-editions-view">
+            <!-- Rendered by editionManager.js -->
+          </div>
+
+          <!-- VIEW: APPLICATION TRACKER (per edition) -->
+          <div id="admin-tracker-view" class="hidden">
+            <!-- Rendered by applicationManager.js -->
+          </div>
+
+          <!-- VIEW: SCHEMA EDITOR -->
+          <div id="schema-editor-panel" class="hidden">
+            <!-- Rendered by schemaEditor.js -->
+          </div>
+
+          <!-- VIEW: MANAGE USERS -->
+          <div id="admin-users-view" class="hidden">
+            <!-- Rendered by user management -->
+          </div>
+
+          <!-- VIEW: GUIDELINES MANAGER -->
+          <div id="admin-guidelines-view" class="hidden">
+            <!-- Rendered by guidelinesManager.js -->
+          </div>
+
+          <!-- VIEW: AUDIT LOGS -->
+          <div id="admin-audit-view" class="hidden">
+            <!-- Rendered by audit log viewer -->
+          </div>
+
+          <!-- VIEW: DATA MANAGEMENT -->
+          <div id="admin-settings-view" class="hidden">
+            <!-- Rendered by data management panel -->
+          </div>
+
+          <!-- VIEW: MANAGE DEPARTMENTS -->
+          <div id="admin-departments-view" class="hidden">
+            <!-- Rendered by department management panel -->
+          </div>
+
+          <!-- VIEW: ASSIGNED DETAILS -->
+          <div id="admin-assigned-details-view" class="hidden">
+            <!-- Rendered by assigned details panel -->
+          </div>
+
+          <!-- VIEW: REVIEW ASSIGNED TASKS -->
+          <div id="admin-review-tasks-view" class="hidden">
+            <!-- Rendered by taskReviewManager.js -->
+          </div>
+
+
+
+          <!-- VIEW: RECYCLE BIN -->
+          <div id="admin-recycle-bin-view" class="hidden">
+          </div>
+
+          <!-- VIEW: MESSAGES -->
+          <div id="admin-messages-view" class="hidden">
+          </div>
+
+        </div>
+
+        <!-- USER PANEL -->
+        <div id="user-panel" class="workspace-panel hidden">
+
+          <!-- VIEW: USER DASHBOARD HOME -->
+          <div id="user-dashboard-view">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <!-- VIEW: ACTIVE APPLICATION FORM -->
+          <div id="user-form-view" class="hidden">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <!-- VIEW: APPLICATION HISTORY -->
+          <div id="user-history-view" class="hidden">
+            <!-- Rendered dynamically -->
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
