@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { runDatabaseIntegrityCheck, repairDataIntegrity, isAnswerNormalizerValid, isQuestionFilled } from './src/db/store.js';
-import { initStore, getEditions, getEditionById, getSectionsByEdition,
+import { initStore, getEditions, getEditionById, getSectionsByEdition, getFieldsByEdition,
          getFieldsBySection, getApplicationsByUser, createApplication,
          saveAnswer, submitApplication, getAnswersByApplication,
          addNotification, getNotifications, getUnreadCount,
@@ -886,6 +886,7 @@ function renderAdminSidebar() {
   if (isSuperAdmin()) {
     tabs.push({ id: 'departments', label: 'Manage Departments', icon: '<path d="M4 21h16M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16H4V5zm4 4h2v2H8V9zm0 6h2v2H8v-2zm6-6h2v2h-2V9zm0 6h2v2h-2v-2z"/>', badge: '' });
     tabs.push({ id: 'assigned-details', label: 'Reassign Tasks', icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', badge: '' });
+    tabs.push({ id: 'recycle-bin', label: 'Recycle Bin', icon: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>', badge: '' });
   }
 
   nav.innerHTML = tabs.map(t => `
@@ -7583,6 +7584,220 @@ function renderMessagesTab(container) {
 // ═══════════════════════════════════════════════════════════════════════════
 // RECYCLE BIN PANEL — Enhanced Premium UI
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// RECYCLE BIN VIEW MODAL (DETAILS VIEWER)
+// ═══════════════════════════════════════════════════════════════════════════
+function openRecycleBinViewModal(item, onRestore, onDelete) {
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000; opacity: 0; transition: opacity 0.3s ease;
+  `;
+  
+  const deletedDate = new Date(item.deletedAt).toLocaleString('en-IN');
+  const now = Date.now();
+  const deletedAtMs = new Date(item.deletedAt).getTime();
+  const daysElapsed = Math.floor((now - deletedAtMs) / (24 * 60 * 60 * 1000));
+  const daysLeft = Math.max(0, 30 - daysElapsed);
+  
+  const getTypeLabel = (type) => {
+    switch (type) {
+      case 'edition': return 'SRF / Edition';
+      case 'assignment': return 'Assignment';
+      case 'application': return 'Application';
+      case 'user': return 'User';
+      case 'department': return 'Department';
+      case 'reformArea': return 'Reform Area';
+      case 'field': return 'Action Point';
+      case 'guideline': return 'Guideline';
+      case 'notification': return 'Notification';
+      default: return 'File Upload';
+    }
+  };
+
+  const getModuleLabel = (type) => {
+    switch (type) {
+      case 'edition': return 'Editions Module';
+      case 'assignment': return 'Assignments Module';
+      case 'application': return 'Applications Module';
+      case 'user': return 'User Directory';
+      case 'department': return 'Department Registry';
+      case 'reformArea': return 'Reform Area Config';
+      case 'field': return 'Action Point Config';
+      case 'guideline': return 'Guidelines Module';
+      case 'notification': return 'Notification Center';
+      default: return 'Submission Files';
+    }
+  };
+
+  let entityDetailsHtml = '';
+  const formatPayload = (data) => {
+    if (!data) return '<p style="color:var(--text-muted);">No payload data available.</p>';
+    try {
+      return `<pre style="background:var(--bg-secondary); border:1px solid var(--border-color); padding:12px; border-radius:8px; overflow-x:auto; font-family:monospace; font-size:12px; color:var(--text-dark); max-height:220px; white-space:pre-wrap; word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+    } catch(e) {
+      return '<p style="color:#ef4444;">Error formatting payload data.</p>';
+    }
+  };
+  
+  let payloadLabel = 'Deleted Object Payload';
+  let payloadContent = '';
+  
+  if (item.type === 'edition') {
+    payloadContent = formatPayload(item.editionData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Edition Name:</strong> ${item.editionData?.name || '—'}</div>
+        <div><strong>Status:</strong> ${item.editionData?.status || '—'}</div>
+        <div><strong>Reform Areas Count:</strong> ${item.reformAreasData?.length || 0}</div>
+        <div><strong>Form Fields Count:</strong> ${item.fieldsData?.length || 0}</div>
+      </div>
+    `;
+  } else if (item.type === 'application') {
+    payloadContent = formatPayload(item.appData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Organization/Dept:</strong> ${item.appData?.organization || '—'}</div>
+        <div><strong>State/UT:</strong> ${item.appData?.state || '—'}</div>
+        <div><strong>Current Status:</strong> ${item.appData?.status || '—'}</div>
+        <div><strong>Answers Count:</strong> ${item.answersData?.length || 0}</div>
+      </div>
+    `;
+  } else if (item.type === 'user') {
+    payloadContent = formatPayload(item.userData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Username:</strong> ${item.userData?.username || '—'}</div>
+        <div><strong>Email:</strong> ${item.userData?.email || '—'}</div>
+        <div><strong>Role:</strong> ${item.userData?.role || '—'}</div>
+        <div><strong>Organization:</strong> ${item.userData?.organization || '—'}</div>
+      </div>
+    `;
+  } else if (item.type === 'department') {
+    payloadContent = formatPayload(item.departmentData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Department Name:</strong> ${item.departmentData?.name || '—'}</div>
+        <div><strong>Code:</strong> ${item.departmentData?.code || '—'}</div>
+      </div>
+    `;
+  } else if (item.type === 'reformArea') {
+    payloadContent = formatPayload(item.reformAreaData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Reform Area Name:</strong> ${item.reformAreaData?.name || item.reformAreaData?.title || '—'}</div>
+        <div><strong>Edition ID:</strong> ${item.reformAreaData?.editionId || '—'}</div>
+      </div>
+    `;
+  } else if (item.type === 'field') {
+    payloadContent = formatPayload(item.fieldData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>Field Question:</strong> ${item.fieldData?.questionText || item.fieldData?.name || '—'}</div>
+        <div><strong>Field Type:</strong> ${item.fieldData?.type || '—'}</div>
+      </div>
+    `;
+  } else if (item.type === 'assignment') {
+    payloadContent = formatPayload(item.assignmentData);
+    entityDetailsHtml = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
+        <div><strong>User Assigned:</strong> ${item.assignmentData?.userId || '—'}</div>
+        <div><strong>Edition ID:</strong> ${item.assignmentData?.editionId || '—'}</div>
+        <div><strong>Reform Area:</strong> ${item.assignmentData?.reformAreaId || '—'}</div>
+      </div>
+    `;
+  } else {
+    payloadLabel = 'File Data';
+    if (item.dataUrl) {
+      payloadContent = `
+        <div style="text-align:center; padding:20px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px;">
+          <div style="font-size:48px; margin-bottom:12px;">📄</div>
+          <div style="font-size:14px; font-weight:700; color:var(--text-dark); margin-bottom:4px;">${item.name}</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">Type: ${item.type || '—'} | Size: ${item.size ? (item.size / 1024).toFixed(1) + ' KB' : '—'}</div>
+          <a href="${item.dataUrl}" download="${item.name}" class="btn btn-sm btn-primary" style="display:inline-flex; align-items:center; gap:8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Download File
+          </a>
+        </div>
+      `;
+    } else {
+      payloadContent = '<p style="color:var(--text-muted);">No file content available.</p>';
+    }
+  }
+
+  backdrop.innerHTML = `
+    <div style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:16px; width:100%; max-width:600px; padding:24px; box-shadow:0 10px 40px rgba(0,0,0,0.3); transform:scale(0.9); transition:transform 0.3s ease; display:flex; flex-direction:column; max-height:85vh;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:16px; margin-bottom:16px;">
+        <div>
+          <span style="font-size:11px; font-weight:700; color:var(--accent-indigo); text-transform:uppercase; letter-spacing:1px; background:rgba(79,70,229,0.1); padding:3px 8px; border-radius:4px; margin-bottom:6px; display:inline-block;">${getTypeLabel(item.type).toUpperCase()} DETAILS</span>
+          <h2 style="margin:0; font-size:20px; font-weight:800; color:var(--text-dark);">${item.name}</h2>
+        </div>
+        <button id="close-rb-view-btn" style="background:transparent; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+      </div>
+      
+      <div style="flex:1; overflow-y:auto; padding-right:6px;">
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:12px 16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; font-size:13px; color:var(--text-dark);">
+          <div><span style="color:var(--text-muted);">Deleted By:</span> <strong>${item.deletedBy || 'user'}</strong></div>
+          <div><span style="color:var(--text-muted);">Deleted Date:</span> <strong>${deletedDate}</strong></div>
+          <div><span style="color:var(--text-muted);">Days until Purge:</span> <strong style="color:#ef4444;">${daysLeft} days remaining</strong></div>
+          <div><span style="color:var(--text-muted);">Item ID:</span> <span style="font-family:monospace; font-size:11px;">${item.id}</span></div>
+        </div>
+        
+        ${entityDetailsHtml}
+        
+        <div style="margin-top:16px;">
+          <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:700; color:var(--text-dark);">${payloadLabel}</h4>
+          ${payloadContent}
+        </div>
+      </div>
+      
+      <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--border-color); padding-top:16px; margin-top:20px;">
+        <button id="rb-view-close-bottom-btn" class="btn btn-outline" style="min-width:90px; height:36px; padding:6px 16px;">Close</button>
+        <button id="rb-view-restore-btn" class="btn btn-success-solid" style="min-width:110px; height:36px; padding:6px 16px;">↩ Restore</button>
+        <button id="rb-view-purge-btn" class="btn btn-danger" style="min-width:140px; height:36px; padding:6px 16px;">✕ Delete Permanently</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(backdrop);
+  
+  // Transition in
+  requestAnimationFrame(() => {
+    backdrop.style.opacity = '1';
+    backdrop.firstElementChild.style.transform = 'scale(1)';
+  });
+  
+  const closeModal = () => {
+    backdrop.style.opacity = '0';
+    backdrop.firstElementChild.style.transform = 'scale(0.9)';
+    setTimeout(() => {
+      if (document.body.contains(backdrop)) {
+        document.body.removeChild(backdrop);
+      }
+    }, 300);
+  };
+  
+  backdrop.querySelector('#close-rb-view-btn').addEventListener('click', closeModal);
+  backdrop.querySelector('#rb-view-close-bottom-btn').addEventListener('click', closeModal);
+  
+  backdrop.querySelector('#rb-view-restore-btn').addEventListener('click', () => {
+    closeModal();
+    onRestore(item.id);
+  });
+  
+  backdrop.querySelector('#rb-view-purge-btn').addEventListener('click', () => {
+    closeModal();
+    onDelete(item.id, item.type);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RECYCLE BIN PANEL — Enhanced Premium UI with Search, Filters & Pagination
+// ═══════════════════════════════════════════════════════════════════════════
 function renderRecycleBinPanel(container) {
   // Auto-purge items older than 30 days
   const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -7595,9 +7810,62 @@ function renderRecycleBinPanel(container) {
   }
 
   const items = getRecycleBin();
-  const appItems = items.filter(i => i.type === 'application');
-  const editionItems = items.filter(i => i.type === 'edition');
-  const fileItems = items.filter(i => i.type !== 'application' && i.type !== 'edition');
+
+  // Initialize filter state if not present
+  container.state = container.state || {
+    searchQuery: '',
+    entityType: 'all',
+    deletedBy: 'all',
+    startDate: '',
+    endDate: '',
+    currentPage: 1,
+    pageSize: 10
+  };
+  const state = container.state;
+
+  // Stats calculation
+  const totalDeleted = items.length;
+  const deletedSRFs = items.filter(i => i.type === 'edition').length;
+  const deletedAssignments = items.filter(i => i.type === 'assignment').length;
+  const deletedApplications = items.filter(i => i.type === 'application').length;
+  const deletedUsers = items.filter(i => i.type === 'user').length;
+  const deletedDepartments = items.filter(i => i.type === 'department').length;
+  const deletedReformAreas = items.filter(i => i.type === 'reformArea').length;
+  const deletedActionPoints = items.filter(i => i.type === 'field').length;
+
+  // Filter items
+  const filtered = items.filter(item => {
+    if (state.searchQuery) {
+      const q = state.searchQuery.toLowerCase();
+      const matchName = (item.name || '').toLowerCase().includes(q);
+      const matchDeletedBy = (item.deletedBy || '').toLowerCase().includes(q);
+      const matchType = (item.type || '').toLowerCase().includes(q);
+      if (!matchName && !matchDeletedBy && !matchType) return false;
+    }
+    if (state.entityType !== 'all') {
+      if (item.type !== state.entityType) return false;
+    }
+    if (state.deletedBy !== 'all') {
+      if (item.deletedBy !== state.deletedBy) return false;
+    }
+    if (state.startDate) {
+      const startMs = new Date(state.startDate + 'T00:00:00').getTime();
+      const itemMs = new Date(item.deletedAt).getTime();
+      if (itemMs < startMs) return false;
+    }
+    if (state.endDate) {
+      const endMs = new Date(state.endDate + 'T23:59:59').getTime();
+      const itemMs = new Date(item.deletedAt).getTime();
+      if (itemMs > endMs) return false;
+    }
+    return true;
+  });
+
+  // Pagination bounds check
+  const totalPages = Math.ceil(filtered.length / state.pageSize) || 1;
+  if (state.currentPage > totalPages) state.currentPage = totalPages;
+  if (state.currentPage < 1) state.currentPage = 1;
+  const paginated = filtered.slice((state.currentPage - 1) * state.pageSize, state.currentPage * state.pageSize);
 
   const urgencyRing = (daysLeft) => {
     if (daysLeft <= 3) return { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', label: 'Critical' };
@@ -7606,159 +7874,310 @@ function renderRecycleBinPanel(container) {
     return { color: '#10b981', bg: 'rgba(16,185,129,0.1)', label: 'Safe' };
   };
 
-  const renderItem = (item) => {
-    const isApp = item.type === 'application';
-    const isEdition = item.type === 'edition';
-    const isFile = !isApp && !isEdition;
-    const deletedAtMs = new Date(item.deletedAt).getTime();
-    const daysElapsed = Math.floor((now - deletedAtMs) / (24 * 60 * 60 * 1000));
-    const daysLeft = Math.max(0, 30 - daysElapsed);
-    const urgency = urgencyRing(daysLeft);
-    const deletedDate = new Date(item.deletedAt).toLocaleString('en-IN');
-    
-    let formattedSize = '—';
-    if (isApp) formattedSize = 'Application';
-    else if (isEdition) formattedSize = 'Edition Framework';
-    else formattedSize = item.size ? (item.size / 1024).toFixed(1) + ' KB' : '—';
-    
-    let sourceName = 'Unknown Source';
-    if (isApp) sourceName = item.appData?.state || item.appData?.organization || 'Unknown Source';
-    else if (isEdition) sourceName = item.editionData?.name || 'Edition';
-    else sourceName = item.appId ? `App: ${item.appId.slice(-8)}` : '—';
-
-    const editionName = isApp ? (item.appData?.editionId || '—') : (isEdition ? item.editionId : (item.fieldId || '—'));
-
-
-    return `
-      <div class="rb-item-card" style="display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-left:4px solid ${urgency.color};border-radius:12px;margin-bottom:10px;transition:box-shadow 0.2s;" onmouseover="this.style.boxShadow='0 4px 20px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow='none'">
-        <!-- Type Icon -->
-        <div style="width:44px;height:44px;border-radius:10px;background:${urgency.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          ${isApp
-            ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${urgency.color}" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
-            : (isEdition 
-              ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${urgency.color}" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`
-              : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${urgency.color}" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`)
-          }
-        </div>
-
-        <!-- Info -->
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-weight:700;font-size:14px;color:var(--text-dark);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</span>
-            <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;background:${urgency.bg};color:${urgency.color};white-space:nowrap;">${isApp ? 'APP' : (isEdition ? 'EDITION' : 'FILE')}</span>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-muted);">
-            <span>📁 ${sourceName}</span>
-            <span>🗂️ ${editionName}</span>
-            <span>📦 ${formattedSize}</span>
-            <span>🗑️ Deleted by <strong style="color:var(--text-main);">${item.deletedBy || 'user'}</strong></span>
-            <span>🕐 ${deletedDate}</span>
-          </div>
-        </div>
-
-        <!-- Expiry Badge -->
-        <div style="text-align:center;flex-shrink:0;min-width:64px;">
-          <div style="font-size:20px;font-weight:800;color:${urgency.color};line-height:1;">${daysLeft}</div>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">days left</div>
-          <div style="font-size:9px;font-weight:600;color:${urgency.color};background:${urgency.bg};padding:2px 6px;border-radius:4px;margin-top:4px;">${urgency.label}</div>
-        </div>
-
-        <!-- Actions -->
-        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-          <button class="btn btn-xs btn-success-solid btn-restore-rb" data-id="${item.id}" style="min-width:80px;">↩ Restore</button>
-          ${isFile ? `<button class="btn btn-xs btn-primary btn-download-rb" data-id="${item.id}" style="min-width:80px;">⬇ Download</button>` : ''}
-          <button class="btn btn-xs btn-danger btn-delete-rb" data-id="${item.id}" data-type="${item.type || 'file'}" style="min-width:80px;">✕ Purge</button>
-        </div>
-      </div>
-    `;
+  const getTypeLabel = (type) => {
+    switch (type) {
+      case 'edition': return 'SRF / Edition';
+      case 'assignment': return 'Assignment';
+      case 'application': return 'Application';
+      case 'user': return 'User';
+      case 'department': return 'Department';
+      case 'reformArea': return 'Reform Area';
+      case 'field': return 'Action Point';
+      case 'guideline': return 'Guideline';
+      case 'notification': return 'Notification';
+      default: return 'File Upload';
+    }
   };
 
-  const appRows = appItems.map(renderItem).join('');
-  const editionRows = editionItems.map(renderItem).join('');
-  const fileRows = fileItems.map(renderItem).join('');
+  const getModuleLabel = (type) => {
+    switch (type) {
+      case 'edition': return 'Editions Module';
+      case 'assignment': return 'Assignments Module';
+      case 'application': return 'Applications Module';
+      case 'user': return 'User Directory';
+      case 'department': return 'Department Registry';
+      case 'reformArea': return 'Reform Area Config';
+      case 'field': return 'Action Point Config';
+      case 'guideline': return 'Guidelines Module';
+      case 'notification': return 'Notification Center';
+      default: return 'Submission Files';
+    }
+  };
 
+  const uniqueDeletedBy = [...new Set(items.map(x => x.deletedBy || 'user'))];
+
+  // Render HTML structure
   container.innerHTML = `
     <div class="section-card" style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div>
           <div class="section-badge admin-badge" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:8px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Recycle Bin
+            Super Admin
           </div>
           <h1 style="margin:0 0 6px 0;">Recycle Bin</h1>
-          <p style="color:var(--text-muted);font-size:14px;margin:0;">Deleted items are stored for <strong>30 days</strong> before permanent removal. Both admin and superadmin share this bin.</p>
+          <p style="color:var(--text-muted);font-size:14px;margin:0;">Deleted items are stored for <strong>30 days</strong> before permanent removal. Only Super Admin has access to view, restore, or permanently delete items.</p>
         </div>
       </div>
     </div>
 
-    <!-- Stats Row -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-      <div class="card glass-card" style="padding:16px;text-align:center;">
-        <div style="font-size:28px;font-weight:800;color:var(--accent-indigo);">${items.length}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Total Items</div>
+    <!-- Stats Grid (8 Columns) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:12px;margin-bottom:24px;">
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid var(--accent-indigo);">
+        <div style="font-size:24px;font-weight:800;color:var(--accent-indigo);">${totalDeleted}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Total Items</div>
       </div>
-      <div class="card glass-card" style="padding:16px;text-align:center;">
-        <div style="font-size:28px;font-weight:800;color:#ef4444;">${editionItems.length}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Editions</div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #ef4444;">
+        <div style="font-size:24px;font-weight:800;color:#ef4444;">${deletedSRFs}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">SRFs (Editions)</div>
       </div>
-      <div class="card glass-card" style="padding:16px;text-align:center;">
-        <div style="font-size:28px;font-weight:800;color:#3b82f6;">${appItems.length}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Applications</div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #f59e0b;">
+        <div style="font-size:24px;font-weight:800;color:#f59e0b;">${deletedAssignments}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Assignments</div>
       </div>
-      <div class="card glass-card" style="padding:16px;text-align:center;">
-        <div style="font-size:28px;font-weight:800;color:#10b981;">${fileItems.length}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Files / Documents</div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #3b82f6;">
+        <div style="font-size:24px;font-weight:800;color:#3b82f6;">${deletedApplications}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Applications</div>
+      </div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #10b981;">
+        <div style="font-size:24px;font-weight:800;color:#10b981;">${deletedUsers}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Users</div>
+      </div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #8b5cf6;">
+        <div style="font-size:24px;font-weight:800;color:#8b5cf6;">${deletedDepartments}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Departments</div>
+      </div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #ec4899;">
+        <div style="font-size:24px;font-weight:800;color:#ec4899;">${deletedReformAreas}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Reform Areas</div>
+      </div>
+      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #14b8a6;">
+        <div style="font-size:24px;font-weight:800;color:#14b8a6;">${deletedActionPoints}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Action Points</div>
       </div>
     </div>
 
-    <!-- Items -->
-    <div class="card glass-card">
-      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-        <h2>Deleted Items (${items.length})</h2>
-        ${items.length > 0 ? `
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-xs btn-outline rb-filter-btn active" data-filter="all" id="rb-filter-all" style="padding:4px 12px;">All (${items.length})</button>
-          <button class="btn btn-xs btn-outline rb-filter-btn" data-filter="edition" id="rb-filter-editions" style="padding:4px 12px;">Editions (${editionItems.length})</button>
-          <button class="btn btn-xs btn-outline rb-filter-btn" data-filter="application" id="rb-filter-apps" style="padding:4px 12px;">Apps (${appItems.length})</button>
-          <button class="btn btn-xs btn-outline rb-filter-btn" data-filter="file" id="rb-filter-files" style="padding:4px 12px;">Files (${fileItems.length})</button>
-        </div>` : ''}
+    <!-- Search & Filters Panel -->
+    <div class="card glass-card" style="padding:16px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+      <div style="flex:1;min-width:240px;position:relative;">
+        <input type="text" id="rb-search-input" class="form-input" placeholder="Search by item name, deleted by..." value="${state.searchQuery}" style="width:100%;height:38px;padding-left:36px;">
+        <span style="position:absolute;left:12px;top:10px;color:var(--text-muted);">🔍</span>
       </div>
+      
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);">Deleted By:</label>
+        <select id="rb-deletedby-select" class="form-input" style="height:38px;padding:6px 12px;min-width:140px;">
+          <option value="all">All Users</option>
+          ${uniqueDeletedBy.map(u => `<option value="${u}" ${state.deletedBy === u ? 'selected' : ''}>${u}</option>`).join('')}
+        </select>
+        
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);margin-left:8px;">Date From:</label>
+        <input type="date" id="rb-start-date" class="form-input" value="${state.startDate}" style="height:38px;width:140px;">
+        
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);">To:</label>
+        <input type="date" id="rb-end-date" class="form-input" value="${state.endDate}" style="height:38px;width:140px;">
+        
+        <button id="rb-clear-filters" class="btn btn-outline" style="height:38px;padding:0 16px;">Clear</button>
+      </div>
+    </div>
+
+    <!-- Main Content Container with Tabs -->
+    <div class="card glass-card">
+      <div class="card-header" style="border-bottom:1px solid var(--border-color);padding-bottom:0;">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:-1px;">
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'all' ? 'active' : ''}" data-type="all" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">All Deleted Items (${totalDeleted})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'edition' ? 'active' : ''}" data-type="edition" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">SRFs (${deletedSRFs})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'assignment' ? 'active' : ''}" data-type="assignment" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Assignments (${deletedAssignments})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'application' ? 'active' : ''}" data-type="application" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Applications (${deletedApplications})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'user' ? 'active' : ''}" data-type="user" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Users (${deletedUsers})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'department' ? 'active' : ''}" data-type="department" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Departments (${deletedDepartments})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'reformArea' ? 'active' : ''}" data-type="reformArea" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Reform Areas (${deletedReformAreas})</button>
+          <button class="btn btn-xs btn-outline rb-tab-btn ${state.entityType === 'field' ? 'active' : ''}" data-type="field" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;">Action Points (${deletedActionPoints})</button>
+        </div>
+      </div>
+      
       <div class="card-body" style="padding:16px;">
-        ${items.length === 0 ? `
-          <div class="empty-state" style="padding:60px 20px;">
+        ${filtered.length === 0 ? `
+          <div class="empty-state" style="padding:60px 20px;text-align:center;">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--border-color)" stroke-width="1">
               <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
               <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
             </svg>
-            <h3 style="margin:16px 0 8px 0;">Recycle Bin is Empty</h3>
-            <p style="color:var(--text-muted);font-size:13px;">No deleted applications or files. Items auto-purge after 30 days.</p>
+            <h3 style="margin:16px 0 8px 0;color:var(--text-dark);">No Items Found</h3>
+            <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px 0;">No deleted records match your active search filter or date ranges.</p>
           </div>
         ` : `
-          <div id="rb-items-container">
-            <div data-section="all">${items.map(renderItem).join('')}</div>
-            <div data-section="edition" class="hidden">${editionRows || '<p style="text-align:center;color:var(--text-muted);padding:20px;">No deleted editions.</p>'}</div>
-            <div data-section="application" class="hidden">${appRows || '<p style="text-align:center;color:var(--text-muted);padding:20px;">No deleted applications.</p>'}</div>
-            <div data-section="file" class="hidden">${fileRows || '<p style="text-align:center;color:var(--text-muted);padding:20px;">No deleted files.</p>'}</div>
+          <div style="overflow-x:auto;">
+            <table class="admin-dashboard-table" style="width:100%;border-collapse:collapse;font-size:13px;color:var(--text-dark);">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:12px;">Item Name</th>
+                  <th style="text-align:left;padding:12px;">Item Type</th>
+                  <th style="text-align:left;padding:12px;">Deleted By</th>
+                  <th style="text-align:left;padding:12px;">Deleted Date</th>
+                  <th style="text-align:left;padding:12px;">Original Module</th>
+                  <th style="text-align:left;padding:12px;">Status</th>
+                  <th style="text-align:left;padding:12px;width:240px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${paginated.map(item => {
+                  const deletedDate = new Date(item.deletedAt).toLocaleString('en-IN');
+                  const deletedAtMs = new Date(item.deletedAt).getTime();
+                  const daysElapsed = Math.floor((now - deletedAtMs) / (24 * 60 * 60 * 1000));
+                  const daysLeft = Math.max(0, 30 - daysElapsed);
+                  const urgency = urgencyRing(daysLeft);
+                  const isFile = item.type !== 'edition' && item.type !== 'assignment' && item.type !== 'application' && item.type !== 'user' && item.type !== 'department' && item.type !== 'reformArea' && item.type !== 'field';
+                  
+                  return `
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                      <td style="padding:12px;font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
+                      <td style="padding:12px;">
+                        <span class="status-badge" style="background:${urgency.bg};color:${urgency.color};font-weight:600;text-transform:none;font-size:11px;padding:3px 8px;">
+                          ${getTypeLabel(item.type)}
+                        </span>
+                      </td>
+                      <td style="padding:12px;font-weight:600;color:var(--text-main);">${item.deletedBy || 'user'}</td>
+                      <td style="padding:12px;color:var(--text-muted);font-size:12px;">${deletedDate}</td>
+                      <td style="padding:12px;color:var(--text-muted);font-size:12px;">${getModuleLabel(item.type)}</td>
+                      <td style="padding:12px;">
+                        <span class="status-badge" style="background:${urgency.bg};color:${urgency.color};font-size:11px;padding:3px 8px;border:1px solid ${urgency.color}33;">
+                          ${daysLeft} days left
+                        </span>
+                      </td>
+                      <td style="padding:12px;">
+                        <div style="display:flex;gap:6px;">
+                          <button class="btn btn-xs btn-outline btn-view-rb" data-id="${item.id}">View</button>
+                          <button class="btn btn-xs btn-success-solid btn-restore-rb" data-id="${item.id}">Restore</button>
+                          ${isFile && item.dataUrl ? `<button class="btn btn-xs btn-primary btn-download-rb" data-id="${item.id}">Download</button>` : ''}
+                          <button class="btn btn-xs btn-danger btn-delete-rb" data-id="${item.id}" data-type="${item.type}">Purge</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Pagination Control Footer -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);flex-wrap:wrap;gap:12px;font-size:13px;color:var(--text-muted);">
+            <div>
+              Showing <strong>${(state.currentPage - 1) * state.pageSize + 1}</strong> to <strong>${Math.min(state.currentPage * state.pageSize, filtered.length)}</strong> of <strong>${filtered.length}</strong> entries
+            </div>
+            
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn btn-xs btn-outline" id="rb-prev-page" ${state.currentPage === 1 ? 'disabled' : ''}>Prev</button>
+              ${Array.from({ length: totalPages }, (_, idx) => {
+                const pNum = idx + 1;
+                return `<button class="btn btn-xs ${state.currentPage === pNum ? 'btn-primary-solid' : 'btn-outline'} rb-page-btn" data-page="${pNum}">${pNum}</button>`;
+              }).join('')}
+              <button class="btn btn-xs btn-outline" id="rb-next-page" ${state.currentPage === totalPages ? 'disabled' : ''}>Next</button>
+            </div>
           </div>
         `}
       </div>
     </div>
   `;
 
-  // Filter tab logic
-  container.querySelectorAll('.rb-filter-btn').forEach(btn => {
+  // Attach search listeners
+  const searchInput = container.querySelector('#rb-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.searchQuery = e.target.value;
+      state.currentPage = 1;
+      clearTimeout(window.rbSearchTimeout);
+      window.rbSearchTimeout = setTimeout(() => {
+        renderRecycleBinPanel(container);
+      }, 300);
+    });
+    // Keep focus at the end of text
+    searchInput.focus();
+    searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+  }
+
+  // Attach dropdown/date listeners
+  container.querySelector('#rb-deletedby-select')?.addEventListener('change', (e) => {
+    state.deletedBy = e.target.value;
+    state.currentPage = 1;
+    renderRecycleBinPanel(container);
+  });
+  
+  container.querySelector('#rb-start-date')?.addEventListener('change', (e) => {
+    state.startDate = e.target.value;
+    state.currentPage = 1;
+    renderRecycleBinPanel(container);
+  });
+  
+  container.querySelector('#rb-end-date')?.addEventListener('change', (e) => {
+    state.endDate = e.target.value;
+    state.currentPage = 1;
+    renderRecycleBinPanel(container);
+  });
+
+  container.querySelector('#rb-clear-filters')?.addEventListener('click', () => {
+    state.searchQuery = '';
+    state.entityType = 'all';
+    state.deletedBy = 'all';
+    state.startDate = '';
+    state.endDate = '';
+    state.currentPage = 1;
+    renderRecycleBinPanel(container);
+  });
+
+  // Attach tab listeners
+  container.querySelectorAll('.rb-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('.rb-filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const filter = btn.dataset.filter;
-      container.querySelectorAll('#rb-items-container > div').forEach(section => {
-        const show = section.dataset.section === filter;
-        section.classList.toggle('hidden', !show);
-      });
+      state.entityType = btn.dataset.type;
+      state.currentPage = 1;
+      renderRecycleBinPanel(container);
     });
   });
 
-  // Restore
+  // Attach pagination listeners
+  container.querySelectorAll('.rb-page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.currentPage = parseInt(btn.dataset.page);
+      renderRecycleBinPanel(container);
+    });
+  });
+
+  container.querySelector('#rb-prev-page')?.addEventListener('click', () => {
+    if (state.currentPage > 1) {
+      state.currentPage--;
+      renderRecycleBinPanel(container);
+    }
+  });
+
+  container.querySelector('#rb-next-page')?.addEventListener('click', () => {
+    if (state.currentPage < totalPages) {
+      state.currentPage++;
+      renderRecycleBinPanel(container);
+    }
+  });
+
+  // Action listeners - View
+  container.querySelectorAll('.btn-view-rb').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = getRecycleBin().find(x => x.id === btn.dataset.id);
+      if (item) {
+        openRecycleBinViewModal(item, 
+          // onRestore
+          (id) => {
+            const success = restoreFromRecycleBin(id);
+            showToast(success ? 'Item restored successfully!' : 'Failed to restore item.', success ? 'success' : 'error');
+            if (success) renderRecycleBinPanel(container);
+          },
+          // onDelete
+          (id, type) => {
+            triggerPurgeConfirm(id, type);
+          }
+        );
+      }
+    });
+  });
+
+  // Action listeners - Restore
   container.querySelectorAll('.btn-restore-rb').forEach(btn => {
     btn.addEventListener('click', () => {
       const success = restoreFromRecycleBin(btn.dataset.id);
@@ -7767,7 +8186,7 @@ function renderRecycleBinPanel(container) {
     });
   });
 
-  // Download file
+  // Action listeners - Download
   container.querySelectorAll('.btn-download-rb').forEach(btn => {
     btn.addEventListener('click', () => {
       const item = getRecycleBin().find(x => x.id === btn.dataset.id);
@@ -7785,36 +8204,56 @@ function renderRecycleBinPanel(container) {
     });
   });
 
-  // Permanently delete
+  // Action listeners - Purge (Permanently Delete)
   container.querySelectorAll('.btn-delete-rb').forEach(btn => {
     btn.addEventListener('click', () => {
-      const isApp = btn.dataset.type === 'application';
-      const isEdition = btn.dataset.type === 'edition';
-      
-      let title = 'Permanently Delete File';
-      let message = 'Permanently delete this file? This cannot be undone.';
-      
-      if (isApp) {
-        title = 'Permanently Delete Application';
-        message = 'Permanently delete this application? All answers and documents will be lost forever. This cannot be undone.';
-      } else if (isEdition) {
-        title = 'Permanently Delete Edition';
-        message = 'Permanently delete this edition? All associated reform areas, questions, applications, and answers will be lost forever. This cannot be undone.';
-      }
-      
-      showConfirm({
-        title,
-        message,
-        type: 'danger',
-        confirmText: 'Delete Permanently',
-        onConfirm: () => {
-          const success = deleteFromRecycleBin(btn.dataset.id);
-          showToast(success ? 'Deleted permanently.' : 'Failed to delete.', success ? 'success' : 'error');
-          if (success) renderRecycleBinPanel(container);
-        }
-      });
+      triggerPurgeConfirm(btn.dataset.id, btn.dataset.type);
     });
   });
+
+  // Helper to trigger purge confirmation
+  const triggerPurgeConfirm = (id, type) => {
+    const isApp = type === 'application';
+    const isEdition = type === 'edition';
+    
+    let title = 'Permanently Delete File';
+    let message = 'Permanently delete this file? <strong style="color:red;">This action cannot be undone.</strong>';
+    
+    if (isApp) {
+      title = 'Permanently Delete Application';
+      message = 'Permanently delete this application? All answers and documents will be lost forever. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (isEdition) {
+      title = 'Permanently Delete Edition';
+      message = 'Permanently delete this edition? All associated reform areas, questions, applications, and answers will be lost forever. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (type === 'user') {
+      title = 'Permanently Delete User';
+      message = 'Permanently delete this user? Their profile data and settings will be lost. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (type === 'department') {
+      title = 'Permanently Delete Department';
+      message = 'Permanently delete this department? All department-related bindings will be lost. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (type === 'reformArea') {
+      title = 'Permanently Delete Reform Area';
+      message = 'Permanently delete this reform area? All questions and answers bound to it will be lost. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (type === 'field') {
+      title = 'Permanently Delete Action Point';
+      message = 'Permanently delete this action point? All user answers bound to it will be lost. <strong style="color:red;">This action cannot be undone.</strong>';
+    } else if (type === 'assignment') {
+      title = 'Permanently Delete Assignment';
+      message = 'Permanently delete this assignment? The user\'s access to the task will be lost forever. <strong style="color:red;">This action cannot be undone.</strong>';
+    }
+
+    showConfirm({
+      title,
+      message,
+      type: 'danger',
+      confirmText: 'Delete Permanently',
+      onConfirm: () => {
+        const success = deleteFromRecycleBin(id);
+        showToast(success ? 'Deleted permanently.' : 'Failed to delete.', success ? 'success' : 'error');
+        if (success) renderRecycleBinPanel(container);
+      }
+    });
+  };
 }
 
 function renderDiagnosticsPanel() {

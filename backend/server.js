@@ -425,7 +425,7 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
     const documentRules = await DocumentRule.find().lean();
     const departments = await Department.find().lean();
     const messages = await Message.find().lean();
-    const recycleBin = await RecycleBin.find().lean();
+    const recycleBin = req.user.role === 'superadmin' ? await RecycleBin.find().lean() : [];
     const reassignmentHistory = await ReassignmentHistory.find().lean();
 
     res.json({
@@ -467,6 +467,17 @@ async function syncCollection(Model, items, keyField = 'id', options = {}) {
   }
   // Delete records not present in the payload
   await Model.deleteMany({ [keyField]: { $nin: ids } }, options);
+}
+
+// Helper to upsert RecycleBin items without deleting others
+async function upsertRecycleBinItems(items, options = {}) {
+  if (!Array.isArray(items)) return;
+  for (const item of items) {
+    const query = { id: item.id };
+    const updateObj = { ...item };
+    delete updateObj._id;
+    await RecycleBin.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, ...options });
+  }
 }
 
 // ─── DEDICATED FILE ENDPOINTS ───────────────────────────────────────────────
@@ -751,6 +762,28 @@ app.post('/api/db', verifySession, async (req, res) => {
 
     // Role-based write authorization check
     if (req.user.role === 'user') {
+      // Validate that they didn't modify or create editions / users
+      if (payload.editions) {
+        const dbEditions = await Edition.find().lean();
+        for (const ed of payload.editions) {
+          const matching = dbEditions.find(x => x.id === ed.id);
+          if (!matching || matching.name !== ed.name || matching.status !== ed.status) {
+            if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+            return res.status(403).json({ error: 'Access denied: Cannot create or modify editions schema' });
+          }
+        }
+      }
+      if (payload.users) {
+        const dbUsers = await User.find({}).lean();
+        for (const u of payload.users) {
+          const matching = dbUsers.find(x => x.id === u.id);
+          if (!matching || matching.role !== u.role || matching.username !== u.username) {
+            if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+            return res.status(403).json({ error: 'Access denied: Cannot modify user directory' });
+          }
+        }
+      }
+
       // 1. Validate application updates belong to user
       if (payload.applications) {
         for (const app of payload.applications) {
@@ -857,6 +890,10 @@ app.post('/api/db', verifySession, async (req, res) => {
             await Notification.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, ...options });
           }
         }
+      }
+
+      if (payload.recycleBin) {
+        await upsertRecycleBinItems(payload.recycleBin, options);
       }
 
       if (useTransaction) {
@@ -966,7 +1003,7 @@ app.post('/api/db', verifySession, async (req, res) => {
       await syncCollection(Assignment, payload.assignments, 'id', options);
       await syncCollection(AuditLog, payload.auditLogs, 'id', options);
       await syncCollection(ReassignmentHistory, payload.reassignmentHistory, 'id', options);
-      await syncCollection(RecycleBin, payload.recycleBin, 'id', options);
+      await upsertRecycleBinItems(payload.recycleBin, options);
 
       if (payload.messages) {
         await syncCollection(Message, payload.messages, 'id', options);

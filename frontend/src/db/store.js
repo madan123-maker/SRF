@@ -783,13 +783,42 @@ export function updateReformArea(id, data) {
 }
 
 export function deleteReformArea(id) {
-  const fields = (_db.formFields || []).filter(f => f.reformAreaId === id);
-  const fieldIds = fields.map(f => f.id);
-  _db.reformAreas = _db.reformAreas.filter(r => r.id !== id);
-  _db.formFields  = _db.formFields.filter(f => f.reformAreaId !== id);
-  _db.applicationAnswers = (_db.applicationAnswers || []).filter(a => !fieldIds.includes(a.fieldId));
-  _db.assignments = (_db.assignments || []).filter(a => a.sectionId !== id && a.reformAreaId !== id && !(a.type === 'Question' && fieldIds.includes(a.questionId || a.fieldId)));
-  _save();
+  const ra = (_db.reformAreas || []).find(r => r.id === id);
+  if (ra) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let deletedBy = 'admin';
+    try {
+      const sessUserRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessUserRaw) {
+        const u = JSON.parse(sessUserRaw);
+        if (u && u.username) deletedBy = u.username;
+      }
+    } catch(e) {}
+
+    const fields = (_db.formFields || []).filter(f => f.reformAreaId === id);
+    const fieldIds = fields.map(f => f.id);
+    const answers = (_db.applicationAnswers || []).filter(a => fieldIds.includes(a.fieldId));
+    const assignments = (_db.assignments || []).filter(a => a.sectionId === id || a.reformAreaId === id || (a.type === 'Question' && fieldIds.includes(a.questionId || a.fieldId)));
+
+    _db.recycleBin.push({
+      id: 'rb_ra_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'reformArea',
+      reformAreaId: id,
+      name: `Reform Area: ${ra.name}`,
+      reformAreaData: ra,
+      fieldsData: fields,
+      answersData: answers,
+      assignmentsData: assignments,
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy
+    });
+
+    _db.reformAreas = _db.reformAreas.filter(r => r.id !== id);
+    _db.formFields  = _db.formFields.filter(f => f.reformAreaId !== id);
+    _db.applicationAnswers = (_db.applicationAnswers || []).filter(a => !fieldIds.includes(a.fieldId));
+    _db.assignments = (_db.assignments || []).filter(a => a.sectionId !== id && a.reformAreaId !== id && !(a.type === 'Question' && fieldIds.includes(a.questionId || a.fieldId)));
+    _save();
+  }
 }
 
 export function reorderReformAreas(editionId, orderedIds) {
@@ -848,10 +877,38 @@ export function updateField(id, data) {
 }
 
 export function deleteField(id) {
-  _db.formFields = _db.formFields.filter(f => f.id !== id);
-  _db.applicationAnswers = (_db.applicationAnswers || []).filter(a => a.fieldId !== id);
-  _db.assignments = (_db.assignments || []).filter(a => !(a.type === 'Question' && (a.questionId === id || a.fieldId === id)));
-  _save();
+  const field = (_db.formFields || []).find(f => f.id === id);
+  if (field) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let deletedBy = 'admin';
+    try {
+      const sessUserRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessUserRaw) {
+        const u = JSON.parse(sessUserRaw);
+        if (u && u.username) deletedBy = u.username;
+      }
+    } catch(e) {}
+
+    const answers = (_db.applicationAnswers || []).filter(a => a.fieldId === id);
+    const assignments = (_db.assignments || []).filter(a => a.type === 'Question' && (a.questionId === id || a.fieldId === id));
+
+    _db.recycleBin.push({
+      id: 'rb_field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'field',
+      fieldId: id,
+      name: `Action Point / Question: ${field.label || field.text}`,
+      fieldData: field,
+      answersData: answers,
+      assignmentsData: assignments,
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy
+    });
+
+    _db.formFields = _db.formFields.filter(f => f.id !== id);
+    _db.applicationAnswers = (_db.applicationAnswers || []).filter(a => a.fieldId !== id);
+    _db.assignments = (_db.assignments || []).filter(a => !(a.type === 'Question' && (a.questionId === id || a.fieldId === id)));
+    _save();
+  }
 }
 
 export function reorderFields(reformAreaId, orderedIds) {
@@ -1774,15 +1831,38 @@ export function updateUser(id, data) {
   if (idx !== -1) { Object.assign(_db.users[idx], data, { id }); _save(); }
 }
 export function deleteUser(id) {
-  _db.users = (_db.users || []).filter(u => u.id !== id);
-  _db.assignments = (_db.assignments || []).filter(a => a.userId !== id);
-  _db.notifications = (_db.notifications || []).filter(n => n.userId !== id);
-  const userApps = (_db.applications || []).filter(a => a.userId === id);
-  const userAppIds = userApps.map(a => a.id);
-  _db.applications = (_db.applications || []).filter(a => a.userId !== id);
-  _db.applicationAnswers = (_db.applicationAnswers || []).filter(a => !userAppIds.includes(a.applicationId));
-  _db.messages = (_db.messages || []).filter(m => m.senderId !== id && m.receiverId !== id);
-  _save();
+  const user = (_db.users || []).find(u => u.id === id);
+  if (user) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let deletedBy = 'admin';
+    try {
+      const sessUserRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessUserRaw) {
+        const u = JSON.parse(sessUserRaw);
+        if (u && u.username) deletedBy = u.username;
+      }
+    } catch(e) {}
+
+    const assignments = (_db.assignments || []).filter(a => a.userId === id);
+    const notifications = (_db.notifications || []).filter(n => n.userId === id);
+
+    _db.recycleBin.push({
+      id: 'rb_user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'user',
+      userId: id,
+      name: `User: ${user.name || user.username} (${user.role})`,
+      userData: user,
+      assignmentsData: assignments,
+      notificationsData: notifications,
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy
+    });
+
+    _db.users = (_db.users || []).filter(u => u.id !== id);
+    _db.assignments = (_db.assignments || []).filter(a => a.userId !== id);
+    _db.notifications = (_db.notifications || []).filter(n => n.userId !== id);
+    _save();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2047,19 +2127,31 @@ export function updateAssignment(id, newUserId, assignedBy) {
 }
 export function removeAssignment(id) { 
   const a = (_db.assignments || []).find(x => x.id === id);
-  let removedBy = 'admin';
-  try {
-    const sessionRaw = sessionStorage.getItem('srf_session_v2');
-    if (sessionRaw) {
-      const u = JSON.parse(sessionRaw);
-      if (u && u.id) removedBy = u.id;
-    }
-  } catch(e) {}
-  _db.assignments = (_db.assignments||[]).filter(x => x.id !== id);
   if (a) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let removedBy = 'admin';
+    try {
+      const sessionRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessionRaw) {
+        const u = JSON.parse(sessionRaw);
+        if (u && u.username) removedBy = u.username;
+      }
+    } catch(e) {}
+
+    _db.recycleBin.push({
+      id: 'rb_assign_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'assignment',
+      assignmentId: id,
+      name: `Assignment: ${a.responsibility || 'Task'}`,
+      assignmentData: a,
+      deletedAt: new Date().toISOString(),
+      deletedBy: removedBy
+    });
+
+    _db.assignments = (_db.assignments || []).filter(x => x.id !== id);
     addAuditLog(removedBy, `Assignment removed: ${id}`, 'Assignment', id);
+    _save(); 
   }
-  _save(); 
 }
 
 export function addReassignmentHistory(assignmentId, oldUserId, newUserId, reassignedBy, reason = '') {
@@ -2198,8 +2290,31 @@ export function createGuideline(data) {
 
 export function deleteGuideline(id) {
   if (!_db.guidelines) return;
-  _db.guidelines = _db.guidelines.filter(x => x.id !== id);
-  _save();
+  const g = _db.guidelines.find(x => x.id === id);
+  if (g) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let deletedBy = 'admin';
+    try {
+      const sessUserRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessUserRaw) {
+        const u = JSON.parse(sessUserRaw);
+        if (u && u.username) deletedBy = u.username;
+      }
+    } catch(e) {}
+
+    _db.recycleBin.push({
+      id: 'rb_guideline_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'guideline',
+      guidelineId: id,
+      name: `Guideline: ${g.title || 'Guideline'} (Page ${g.page || '—'})`,
+      guidelineData: g,
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy
+    });
+
+    _db.guidelines = _db.guidelines.filter(x => x.id !== id);
+    _save();
+  }
 }
 
 export function getDocumentRules(editionId) {
@@ -2474,8 +2589,31 @@ export function updateDepartment(id, data) {
 }
 
 export function deleteDepartment(id) {
-  _db.departments = (_db.departments || []).filter(d => d.id !== id);
-  _save();
+  const dept = (_db.departments || []).find(d => d.id === id);
+  if (dept) {
+    if (!_db.recycleBin) _db.recycleBin = [];
+    let deletedBy = 'admin';
+    try {
+      const sessUserRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessUserRaw) {
+        const u = JSON.parse(sessUserRaw);
+        if (u && u.username) deletedBy = u.username;
+      }
+    } catch(e) {}
+
+    _db.recycleBin.push({
+      id: 'rb_dept_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'department',
+      departmentId: id,
+      name: `Department: ${dept.name} (${dept.code})`,
+      departmentData: dept,
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy
+    });
+
+    _db.departments = (_db.departments || []).filter(d => d.id !== id);
+    _save();
+  }
   return { success: true };
 }
 
@@ -2584,6 +2722,64 @@ export function restoreFromRecycleBin(id) {
         _db.applicationAnswers.push(ans);
       }
     });
+  } else if (item.type === 'user') {
+    if (!_db.users) _db.users = [];
+    if (!_db.users.some(u => u.id === item.userId)) {
+      _db.users.push(item.userData);
+    }
+    if (!_db.assignments) _db.assignments = [];
+    (item.assignmentsData || []).forEach(a => {
+      if (!_db.assignments.some(x => x.id === a.id)) _db.assignments.push(a);
+    });
+    if (!_db.notifications) _db.notifications = [];
+    (item.notificationsData || []).forEach(n => {
+      if (!_db.notifications.some(x => x.id === n.id)) _db.notifications.push(n);
+    });
+  } else if (item.type === 'department') {
+    if (!_db.departments) _db.departments = [];
+    if (!_db.departments.some(d => d.id === item.departmentId)) {
+      _db.departments.push(item.departmentData);
+    }
+  } else if (item.type === 'guideline') {
+    if (!_db.guidelines) _db.guidelines = [];
+    if (!_db.guidelines.some(g => g.id === item.guidelineId)) {
+      _db.guidelines.push(item.guidelineData);
+    }
+  } else if (item.type === 'assignment') {
+    if (!_db.assignments) _db.assignments = [];
+    if (!_db.assignments.some(a => a.id === item.assignmentId)) {
+      _db.assignments.push(item.assignmentData);
+    }
+  } else if (item.type === 'reformArea') {
+    if (!_db.reformAreas) _db.reformAreas = [];
+    if (!_db.reformAreas.some(r => r.id === item.reformAreaId)) {
+      _db.reformAreas.push(item.reformAreaData);
+    }
+    if (!_db.formFields) _db.formFields = [];
+    (item.fieldsData || []).forEach(f => {
+      if (!_db.formFields.some(x => x.id === f.id)) _db.formFields.push(f);
+    });
+    if (!_db.applicationAnswers) _db.applicationAnswers = [];
+    (item.answersData || []).forEach(a => {
+      if (!_db.applicationAnswers.some(x => x.id === a.id)) _db.applicationAnswers.push(a);
+    });
+    if (!_db.assignments) _db.assignments = [];
+    (item.assignmentsData || []).forEach(a => {
+      if (!_db.assignments.some(x => x.id === a.id)) _db.assignments.push(a);
+    });
+  } else if (item.type === 'field') {
+    if (!_db.formFields) _db.formFields = [];
+    if (!_db.formFields.some(f => f.id === item.fieldId)) {
+      _db.formFields.push(item.fieldData);
+    }
+    if (!_db.applicationAnswers) _db.applicationAnswers = [];
+    (item.answersData || []).forEach(a => {
+      if (!_db.applicationAnswers.some(x => x.id === a.id)) _db.applicationAnswers.push(a);
+    });
+    if (!_db.assignments) _db.assignments = [];
+    (item.assignmentsData || []).forEach(a => {
+      if (!_db.assignments.some(x => x.id === a.id)) _db.assignments.push(a);
+    });
   } else {
     const answer = (_db.applicationAnswers || []).find(a => a.applicationId === item.appId && a.fieldId === item.fieldId);
     if (answer) {
@@ -2621,6 +2817,16 @@ export function restoreFromRecycleBin(id) {
     }
   }
 
+  let restoredBy = 'admin';
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    if (sessionRaw) {
+      const u = JSON.parse(sessionRaw);
+      if (u && u.username) restoredBy = u.username;
+    }
+  } catch(e) {}
+  addAuditLog(restoredBy, `Restored item from Recycle Bin: ${item.name} (${item.type})`, item.type, item.id, `Restored At: ${new Date().toISOString()}`);
+
   _db.recycleBin.splice(idx, 1);
   _save();
   return true;
@@ -2631,18 +2837,16 @@ export function deleteFromRecycleBin(id) {
   const idx = _db.recycleBin.findIndex(x => x.id === id);
   if (idx !== -1) {
     const item = _db.recycleBin[idx];
-    if (item.type === 'edition') {
-      const edId = item.editionId || (item.editionData && item.editionData.id);
-      if (edId) {
-        _db.editions = (_db.editions || []).filter(e => e.id !== edId);
-        _db.reformAreas = (_db.reformAreas || []).filter(r => r.editionId !== edId);
-        _db.formFields = (_db.formFields || []).filter(f => f.editionId !== edId);
-        const appsToDelete = (_db.applications || []).filter(a => a.editionId === edId);
-        const appIds = appsToDelete.map(a => a.id);
-        _db.applications = (_db.applications || []).filter(a => a.editionId !== edId);
-        _db.applicationAnswers = (_db.applicationAnswers || []).filter(ans => !appIds.includes(ans.applicationId));
+    let deletedBy = 'admin';
+    try {
+      const sessionRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessionRaw) {
+        const u = JSON.parse(sessionRaw);
+        if (u && u.username) deletedBy = u.username;
       }
-    }
+    } catch(e) {}
+    addAuditLog(deletedBy, `Permanently deleted item from Recycle Bin: ${item.name} (${item.type})`, item.type, item.id, `Permanently Deleted At: ${new Date().toISOString()}`);
+
     _db.recycleBin.splice(idx, 1);
     _save();
     return true;
