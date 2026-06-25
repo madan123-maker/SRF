@@ -3017,27 +3017,6 @@ export function validateApplicationAssignmentLink(userId, editionId) {
     const user = getUserById(userId);
     const newApp = createApplication(userId, editionId, user?.category || '', '');
     addAuditLog('system', `Auto-repaired missing application draft for user ${userId} on edition ${editionId}`, 'integrity', newApp.id);
-  } else if (app && userAssignments.length === 0) {
-    // Application exists but no assignments! Create default assignments for all reform areas.
-    console.warn(`[Integrity Repair] Application exists for user ${userId} on edition ${editionId} but no assignments. Creating assignments.`);
-    const reformAreasList = (_db.reformAreas || []).filter(ra => ra.editionId === editionId);
-    reformAreasList.forEach(ra => {
-      const safeId = 'assign_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-      const a = {
-        id: safeId,
-        userId,
-        editionId,
-        type: 'Reform Area',
-        reformAreaId: ra.id,
-        reformAreaName: ra.name,
-        sectionId: ra.id,
-        responsibility: `Reform Area: ${ra.name}`,
-        assignedBy: 'system',
-        assignedAt: new Date().toISOString()
-      };
-      _db.assignments.push(a);
-    });
-    addAuditLog('system', `Auto-repaired missing assignments for user ${userId} on edition ${editionId}`, 'integrity', app.id);
   }
 }
 

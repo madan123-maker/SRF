@@ -6637,8 +6637,16 @@ function renderPublisherPanel(container) {
 // ASSIGNED DETAILS PANEL (SUPERADMIN)
 // ═══════════════════════════════════════════════════════════════════════════
 function renderAssignedDetailsPanel(container) {
-  const assignments = getAllAssignments();
   const allUsers = getUsers();
+  const assignments = getAllAssignments().filter(a => {
+    if (!a) return false;
+    if (!a.userId) return false;
+    const user = allUsers.find(u => u.id === a.userId);
+    if (!user || user.active === false || user.status === 'deleted') return false;
+    if (typeof isAssignmentValid === 'function' && !isAssignmentValid(a)) return false;
+    if (a.status === 'deleted' || a.deleted === true) return false;
+    return true;
+  });
   
   // Sort assignments by date descending
   assignments.sort((a, b) => new Date(b.assignedAt || 0) - new Date(a.assignedAt || 0));
@@ -6796,8 +6804,10 @@ function renderAssignedDetailsPanel(container) {
           </td>
           <td style="font-weight: 500; color: var(--text-dark);">${responsibilityText}</td>
           <td style="color:var(--text-muted); font-size:12px;">
-            <strong>${assignerName}</strong><br>
             ${new Date(a.assignedAt).toLocaleDateString()}
+          </td>
+          <td style="color:var(--text-muted); font-size:12px; font-weight: 600;">
+            ${assignerName}
           </td>
           <td>
             <div class="action-btns">
@@ -6823,8 +6833,9 @@ function renderAssignedDetailsPanel(container) {
               <th>User</th>
               <th>Department</th>
               <th>SRF Version</th>
-              <th>Task / Responsibility</th>
-              <th>Assigned By & Date</th>
+              <th>Assigned Reform Area</th>
+              <th>Assigned Date</th>
+              <th>Assigned By</th>
               <th>Actions</th>
             </tr>
           </thead>
