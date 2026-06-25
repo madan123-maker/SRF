@@ -617,58 +617,7 @@ export function updateEdition(id, data) {
       } catch(e) {}
       if (newStatus === 'published') {
         addAuditLog(currentUserId, `Published edition: ${_db.editions[idx].name}`, 'edition', id);
-        
-        const activeUsers = (_db.users || []).filter(u => u.role === 'user' && u.active !== false);
-        
-        let appsCreatedCount = 0;
-
-        activeUsers.forEach(user => {
-          // Create application placeholder draft if one does not already exist
-          const existingApp = (_db.applications || []).find(a => a.userId === user.id && a.editionId === id && a.status !== 'Rejected');
-          if (!existingApp) {
-            const newApp = {
-              id: 'APP_' + Date.now() + '_' + Math.random().toString(36).substr(2,5).toUpperCase(),
-              editionId: id,
-              userId: user.id,
-              state: user.state || '',
-              organization: user.organization || '',
-              category: user.category || '',
-              duration: '',
-              status: 'Draft',
-              score: 0,
-              submittedAt: null,
-              updatedAt: new Date().toISOString(),
-              rejectionReason: '',
-              additionalDocsNote: '',
-              reviewerComments: '',
-              timeline: [{ action: 'Application created on publishing edition', timestamp: new Date().toISOString(), by: user.id }],
-              comments: [],
-              reformAreaStatuses: {},
-              statusHistory: [{ status: 'Draft', timestamp: new Date().toISOString(), by: user.id }],
-              submissions: []
-            };
-            _db.applications.push(newApp);
-            appsCreatedCount++;
-            
-            // Add notification
-            const noteKey = `APPLICATION_CREATED_${id}_${user.id}`;
-            const note = {
-              id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
-              userId: user.id,
-              eventType: 'APPLICATION_CREATED',
-              message: `A new application draft has been initialized for the published edition: ${_db.editions[idx].name}`,
-              applicationId: newApp.id,
-              notificationKey: noteKey,
-              read: false,
-              isDismissed: false,
-              createdAt: new Date().toISOString()
-            };
-            if (!_db.notifications) _db.notifications = [];
-            _db.notifications.unshift(note);
-          }
-        });
-        
-        addAuditLog('system', `Published Edition Setup Complete: Created ${appsCreatedCount} application drafts.`, 'edition', id);
+        addAuditLog('system', `Published Edition Setup Complete: Edition is now available for task assignment.`, 'edition', id);
       } else {
         addAuditLog(currentUserId, `Unpublished edition: ${_db.editions[idx].name}`, 'edition', id);
       }
@@ -1484,8 +1433,8 @@ export function saveAnswer(appId, fieldId, value, files = []) {
     const existingFiles = ans.files || [];
     ans.files = files.map(f => {
       const existing = existingFiles.find(ef => ef.docId === f.docId);
-      if (f.fileStatus === 'Pending' || f.fileStatus === DOC_STATUS.PENDING) {
-        return { ...f, fileStatus: DOC_STATUS.PENDING, fileRejectionReason: '' };
+      if (existing) {
+        return { ...f, fileStatus: existing.fileStatus, fileRejectionReason: existing.fileRejectionReason || '' };
       }
       return { ...f, fileStatus: DOC_STATUS.PENDING, fileRejectionReason: '' };
     });
@@ -1793,38 +1742,97 @@ export function getUserByUsername(u) { return (_db.users||[]).find(x => x.userna
 export function authenticateUser(username, password) {
   return (_db.users||[]).find(u => u.username === username && String(u.password) === String(password) && u.active !== false);
 }
-export function createUser(data) {
-  let isAuthorizedAdmin = false;
+export async function createUser(data) {
+  let reqUserId = null;
+  let reqUserRole = null;
   try {
     const sessionRaw = sessionStorage.getItem('srf_session_v2');
     if (sessionRaw) {
-      const role = JSON.parse(sessionRaw).role;
-      isAuthorizedAdmin = role === 'superadmin' || role === 'admin';
+      const sess = JSON.parse(sessionRaw);
+      reqUserId = sess.id;
+      reqUserRole = sess.role;
     }
   } catch (e) {}
 
-  if (!isAuthorizedAdmin) {
+  if (reqUserRole !== 'superadmin' && reqUserRole !== 'admin') {
     return { error: 'Only administrators can register users.' };
   }
 
-  if (getUserByUsername(data.username)) return { error: 'Username already exists' };
-  const user = {
-    id: 'user_' + Date.now(),
-    username: data.username, password: data.password,
-    email: data.email || '', role: data.role || 'user',
-    name: data.name || data.username,
-    organization: data.organization || '',
-    category: data.category || '', state: data.state || '',
-    district: data.district || '', sector: data.sector || '',
-    nodalOfficer: data.nodalOfficer || '', startupName: data.startupName || '',
-    createdAt: new Date().toISOString(), active: true
-  };
-  _db.users.push(user);
-  
-  // Applications will be created when standard users open/start them on dashboard.
-  
-  _save();
-  return user;
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': reqUserId,
+        'X-User-Role': reqUserRole
+      },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      return { error: errData.error || 'Failed to create user' };
+    }
+    const result = await res.json();
+    if (result.success) {
+      if (!_db.users) _db.users = [];
+      _db.users.push(result.user);
+      try { localStorage.setItem(DB_KEY, JSON.stringify(_db)); } catch(e) {}
+      return result.user;
+    }
+    return { error: 'Invalid server response' };
+  } catch (err) {
+    console.error('[Store] error creating user:', err);
+  }
+}
+export async function importUsersBulk(usersArray) {
+  let reqUserId = null;
+  let reqUserRole = null;
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    if (sessionRaw) {
+      const sess = JSON.parse(sessionRaw);
+      reqUserId = sess.id;
+      reqUserRole = sess.role;
+    }
+  } catch (e) {}
+
+  if (reqUserRole !== 'superadmin' && reqUserRole !== 'admin') {
+    return { error: 'Only administrators can bulk register users.' };
+  }
+
+  try {
+    const res = await fetch('/api/register-bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': reqUserId,
+        'X-User-Role': reqUserRole
+      },
+      body: JSON.stringify({ users: usersArray })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      return { error: errData.error || 'Failed to bulk import users' };
+    }
+    const result = await res.json();
+    if (result.success) {
+      if (!_db.users) _db.users = [];
+      if (result.createdUsers && Array.isArray(result.createdUsers)) {
+        result.createdUsers.forEach(nu => {
+          const exists = _db.users.some(u => u.id === nu.id);
+          if (!exists) {
+            _db.users.push(nu);
+          }
+        });
+      }
+      try { localStorage.setItem(DB_KEY, JSON.stringify(_db)); } catch(e) {}
+      return result;
+    }
+    return { error: 'Invalid server response' };
+  } catch (err) {
+    console.error('[Store] error bulk importing users:', err);
+    return { error: 'Network error bulk importing users' };
+  }
 }
 export function updateUser(id, data) {
   const idx = _db.users.findIndex(u => u.id === id);
@@ -1936,7 +1944,30 @@ export function getNotStartedCount(userId) {
 // AUDIT LOGS
 // ═══════════════════════════════════════════════════════════════
 export function addAuditLog(userId, action, entityType, entityId, details = '') {
-  const log = { id: 'log_' + Date.now(), userId, action, entityType, entityId, details, timestamp: new Date().toISOString() };
+  const now = new Date();
+  const timestamp = now.toISOString();
+  const date = timestamp.slice(0, 10);
+  const time = now.toTimeString().split(' ')[0];
+  
+  const user = getUserById(userId) || (_db.users || []).find(u => u.username === userId);
+  const username = user ? user.username : (userId || 'system');
+  const role = user ? user.role : (userId === 'system' ? 'system' : 'unknown');
+  
+  const log = {
+    id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    userId: user ? user.id : userId,
+    username,
+    role,
+    action,
+    entityType,
+    entityId,
+    details,
+    timestamp,
+    date,
+    time,
+    ipAddress: '127.0.0.1' // Server will update this with client request IP during sync
+  };
+  
   if (!_db.auditLogs) _db.auditLogs = [];
   _db.auditLogs.unshift(log);
   if (_db.auditLogs.length > 2000) _db.auditLogs = _db.auditLogs.slice(0, 2000);
@@ -2111,8 +2142,51 @@ export function createAssignment(userId, data, assignedBy) {
   const a = { id: safeId, userId, ...data, assignedBy, assignedAt: new Date().toISOString() };
   _db.assignments.push(a);
   addAuditLog(assignedBy, `Assigned task to user: ${userId}`, 'Assignment', a.id);
+  validateApplicationAssignmentLink(userId, data.editionId);
   _save();
   return a;
+}
+export function createAssignmentsBulk(userId, assignmentsArray, assignedBy) {
+  let createdCount = 0;
+  const now = new Date().toISOString();
+  
+  if (!_db.assignments) _db.assignments = [];
+  
+  const editionIds = new Set();
+  
+  assignmentsArray.forEach(data => {
+    const exists = _db.assignments.some(x => 
+      x.userId === userId &&
+      x.editionId === data.editionId &&
+      x.type === data.type &&
+      (data.type === 'Reform Area' ? (x.sectionId === data.sectionId || x.reformAreaId === data.reformAreaId) : true) &&
+      (data.type === 'Action Point' ? x.actionPointId === data.actionPointId : true) &&
+      (data.type === 'Question' ? (x.questionId === data.questionId || x.fieldId === data.fieldId) : true)
+    );
+
+    if (!exists) {
+      const safeId = 'assign_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+      const a = { 
+        id: safeId, 
+        userId, 
+        ...data, 
+        assignedBy, 
+        assignedAt: now 
+      };
+      _db.assignments.push(a);
+      createdCount++;
+      editionIds.add(data.editionId);
+    }
+  });
+
+  if (createdCount > 0) {
+    editionIds.forEach(editionId => {
+      validateApplicationAssignmentLink(userId, editionId);
+    });
+    addAuditLog(assignedBy, `Bulk assigned ${createdCount} items to user: ${userId}`, 'Assignment', 'bulk');
+    _save();
+  }
+  return createdCount;
 }
 export function updateAssignment(id, newUserId, assignedBy) {
   const a = (_db.assignments || []).find(x => x.id === id);
@@ -2120,6 +2194,7 @@ export function updateAssignment(id, newUserId, assignedBy) {
     a.userId = newUserId;
     a.assignedBy = assignedBy;
     a.assignedAt = new Date().toISOString();
+    validateApplicationAssignmentLink(newUserId, a.editionId);
     _save();
     return a;
   }
@@ -3175,7 +3250,6 @@ export function repairDataIntegrity() {
         appChanged = true;
       }
     }
-
     // Auto-assign reviewer if submitted but missing
     if (['Submitted', 'Under Review', 'Resubmitted'].includes(app.status) && !app.assignedReviewer) {
       const admins = (_db.users || []).filter(u => u.role === 'admin' || u.role === 'reviewer');
@@ -3197,13 +3271,23 @@ export function repairDataIntegrity() {
             leastWorkload = workloads[adm.id];
           }
         });
+        
+        // Delegation Check
+        const selectedReviewerUser = admins.find(u => u.id === leastReviewer);
+        if (selectedReviewerUser && selectedReviewerUser.delegationActive && selectedReviewerUser.delegatedTo) {
+          const delegateUser = (_db.users || []).find(u => u.id === selectedReviewerUser.delegatedTo || u.username === selectedReviewerUser.delegatedTo);
+          if (delegateUser && delegateUser.active !== false && ['admin', 'superadmin', 'reviewer'].includes(delegateUser.role)) {
+            console.log(`[Delegation] Re-routing auto-assigned application ${app.id} from ${selectedReviewerUser.username} to backup reviewer ${delegateUser.username}`);
+            leastReviewer = delegateUser.id;
+          }
+        }
+
         app.assignedReviewer = leastReviewer;
         app.assignedDate = new Date().toISOString();
         appChanged = true;
         stats.reviewersAssigned++;
       }
     }
-
     // Correct question scores and status
     const answers = getAnswersByApplication(app.id);
     const fields = getFieldsByEdition(app.editionId);
@@ -3300,5 +3384,277 @@ function recalculateExistingApplications() {
   if (changed) {
     console.log('[Store] Score repair complete. Persisting fixes.');
     _save();
+  }
+}
+
+export async function getActiveLocks() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/applications/locks/active', {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching active locks:', e);
+    return [];
+  }
+}
+
+export async function getLockStatus(appId) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/lock`, {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching lock status:', e);
+    return { locked: false };
+  }
+}
+
+export async function acquireLock(appId, reason = '') {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/lock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      },
+      body: JSON.stringify({ reason })
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error acquiring lock:', e);
+    return { success: false };
+  }
+}
+
+export async function releaseLock(appId, force = false, forceReason = '') {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/unlock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      },
+      body: JSON.stringify({ force, forceReason })
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error releasing lock:', e);
+    return { success: false };
+  }
+}
+
+export async function getApplicationVersions(appId) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/versions`, {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching versions:', e);
+    return [];
+  }
+}
+
+export async function createApplicationVersion(appId, changeSummary = '') {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/versions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      },
+      body: JSON.stringify({ changeSummary })
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error creating version:', e);
+    return { success: false };
+  }
+}
+
+export async function getApplicationVersionDetails(appId, versionNum) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/applications/${appId}/versions/${versionNum}`, {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching version details:', e);
+    return null;
+  }
+}
+
+export async function getSLASettings() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/sla-settings', {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching SLA settings:', e);
+    return { submissionDays: 15, reviewDays: 5, approvalDays: 5, escalationDays: 3, reminderFrequency: 2 };
+  }
+}
+
+export async function saveSLASettings(data) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/sla-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error saving SLA settings:', e);
+    return { success: false };
+  }
+}
+
+export async function getReviewerWorkload() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/reviewer-workload', {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching workloads:', e);
+    return [];
+  }
+}
+
+export async function rebalanceWorkload(sourceReviewerId, targetReviewerId) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/reviewer-workload/rebalance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      },
+      body: JSON.stringify({ sourceReviewerId, targetReviewerId })
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error rebalancing workload:', e);
+    return { success: false };
+  }
+}
+
+export async function getBackups() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/backups', {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching backups:', e);
+    return [];
+  }
+}
+
+export async function createBackup() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/backups', {
+      method: 'POST',
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error creating backup:', e);
+    return { success: false };
+  }
+}
+
+export async function restoreBackup(id) {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch(`/api/backups/${id}/restore`, {
+      method: 'POST',
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error restoring backup:', e);
+    return { success: false };
+  }
+}
+
+export async function getDataQualityReport() {
+  try {
+    const sessionRaw = sessionStorage.getItem('srf_session_v2');
+    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
+    const res = await fetch('/api/data-quality-report', {
+      headers: {
+        'X-User-Id': sess.id || '',
+        'X-User-Role': sess.role || ''
+      }
+    });
+    return res.json();
+  } catch (e) {
+    console.error('Error fetching data quality report:', e);
+    return { success: false, errors: [] };
   }
 }

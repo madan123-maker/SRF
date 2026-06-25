@@ -3,14 +3,14 @@
    Dynamic SRF Management Platform
    ========================================================================== */
 
-import { runDatabaseIntegrityCheck, repairDataIntegrity, isAnswerNormalizerValid, isQuestionFilled } from './src/db/store.js';
+import { runDatabaseIntegrityCheck, repairDataIntegrity, isAnswerNormalizerValid, isQuestionFilled, getLockStatus, acquireLock, releaseLock } from './src/db/store.js';
 import { initStore, getEditions, getEditionById, getSectionsByEdition, getFieldsByEdition,
          getFieldsBySection, getApplicationsByUser, createApplication,
          saveAnswer, submitApplication, getAnswersByApplication,
          addNotification, getNotifications, getUnreadCount,
          markAllNotificationsRead, addAuditLog, getEditionStats,
          getApplicationById, updateApplication, forceSave, calculateApplicationScore, calculateApplicationMaxScore,
-         getUsers, createUser, getUserById, getAssignments, getAllAssignments, createAssignment,
+         getUsers, createUser, importUsersBulk, getUserById, getAssignments, getAllAssignments, createAssignment, createAssignmentsBulk,
          updateAssignment, removeAssignment, getReformAreas, getAuditLogs, getGuidelines,
          createGuideline, deleteGuideline, getDocumentRules, submitReformArea, getDb, deleteUser,
          addReassignmentHistory, getReassignmentHistory, getPendingAssignmentsCount, isSectionAssignedToUser as isSectionAssignedToUserStore, isFieldAssignedToUser as isFieldAssignedToUserStore,
@@ -32,6 +32,26 @@ import { NOTIFICATION_EVENTS } from './src/db/schema.js';
 import { initFormEditor } from './formEditor.js';
 import { renderUserDashboardEnhanced, renderAdminAnalyticsDashboard, renderTabbedApplicationWorkspace } from './src/modules/advancedDashboard.js';
 import { renderTaskReviewPanel } from './src/modules/taskReviewManager.js';
+import { renderGovernancePanel } from './src/modules/governanceManager.js';
+
+// Cleanup helper for application heartbeats/locks
+async function cleanupAllHeartbeats() {
+  if (window.formLockHeartbeat) {
+    clearInterval(window.formLockHeartbeat);
+    window.formLockHeartbeat = null;
+  }
+  if (window.detailLockHeartbeat) {
+    clearInterval(window.detailLockHeartbeat);
+    window.detailLockHeartbeat = null;
+  }
+  if (activeApplicationId) {
+    try {
+      await releaseLock(activeApplicationId);
+    } catch (e) {
+      console.warn('Failed to release lock on cleanup:', e);
+    }
+  }
+}
 
 // Global Fetch Hook to inject custom session headers and route API calls
 const originalFetch = window.fetch;
@@ -341,6 +361,67 @@ if (toggleBtn && pwdInput) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH — LOGIN
 // ═══════════════════════════════════════════════════════════════════════════
+function openFirstLoginResetModal(userObj) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom visible';
+  backdrop.style.zIndex = '10005';
+  
+  backdrop.innerHTML = `
+    <div class="modal-card-custom animate-modal-in" style="max-width:400px; text-align:left;">
+      <h3 class="modal-title-custom" style="margin-bottom:15px; font-family:var(--font-title); font-weight:700; color:var(--text-dark);">Reset Password (First Login)</h3>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
+        For security purposes, you are required to change your temporary password on your first login.
+      </p>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">New Password *</label>
+        <input type="password" id="first-reset-pwd-new" class="form-input" placeholder="••••••••" style="width:100%;" required>
+      </div>
+      <div class="form-group" style="margin-bottom:20px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">Confirm New Password *</label>
+        <input type="password" id="first-reset-pwd-confirm" class="form-input" placeholder="••••••••" style="width:100%;" required>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-primary" id="btn-submit-first-reset-pwd">Update Password</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(backdrop);
+  
+  submitBtn.addEventListener('click', async () => {
+    const newPwd = backdrop.querySelector('#first-reset-pwd-new').value;
+    const confirmPwd = backdrop.querySelector('#first-reset-pwd-confirm').value;
+    
+    if (!newPwd || !confirmPwd) {
+      showToast('Please fill in all password fields.', 'error');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      showToast('Passwords do not match.', 'error');
+      return;
+    }
+    if (newPwd.length < 3) {
+      showToast('Password must be at least 3 characters long.', 'error');
+      return;
+    }
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Updating...';
+    try {
+      await postJson('/api/change-password', { userId: userObj.id, newPassword: newPwd });
+      updateUser(userObj.id, { password: newPwd, mustResetPassword: false });
+      addAuditLog(userObj.id, 'Reset temporary password on first login', 'auth', userObj.id);
+      showToast('Password updated successfully! Logging you in...', 'success');
+      backdrop.remove();
+      initPortal();
+    } catch(err) {
+      showToast(err.message || 'Failed to update password.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Update Password';
+    }
+  });
+}
+
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = document.getElementById('username').value.replace(/\s+/g, '').toLowerCase();
@@ -355,11 +436,265 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       return;
     }
     document.getElementById('password').value = '';
-    initPortal();
+    if (result.user.mustResetPassword) {
+      openFirstLoginResetModal(result.user);
+    } else {
+      initPortal();
+    }
   } else {
     showToast(result.error || 'Invalid credentials.', 'error');
   }
 });
+
+document.getElementById('link-forgot-password')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  openForgotPasswordModal();
+});
+
+document.getElementById('link-request-nodal')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  openRequestNodalModal();
+});
+
+function openForgotPasswordModal() {
+  let step = 1;
+  let userId = '';
+  let maskedEmail = '';
+  
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom visible';
+  backdrop.style.zIndex = '10005';
+  
+  const renderStep = () => {
+    let html = '';
+    if (step === 1) {
+      html = `
+        <div class="modal-card-custom animate-modal-in" style="max-width: 400px; text-align: left;">
+          <h3 class="modal-title-custom">Account Recovery</h3>
+          <p class="modal-msg-custom">Enter your username or registered email. We will send you an OTP code to verify your identity.</p>
+          <div class="form-group" style="margin-bottom: 15px;">
+            <label for="recovery-input" style="font-weight:600;">Username or Email</label>
+            <input type="text" id="recovery-input" required class="form-input" placeholder="e.g. ap_officer" style="width: 100%;">
+          </div>
+          <div class="modal-actions-custom" style="margin-top: 20px;">
+            <button type="button" class="btn btn-secondary" id="btn-recovery-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btn-recovery-send">Send OTP</button>
+          </div>
+        </div>
+      `;
+    } else if (step === 2) {
+      html = `
+        <div class="modal-card-custom animate-modal-in" style="max-width: 400px; text-align: left;">
+          <h3 class="modal-title-custom">Reset Password</h3>
+          <p class="modal-msg-custom">We have sent a 6-digit OTP code to <strong>${maskedEmail}</strong>. Please enter the OTP and your new password below.</p>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="recovery-otp" style="font-weight:600;">6-Digit OTP Code</label>
+            <input type="text" id="recovery-otp" maxlength="6" required class="form-input" placeholder="e.g. 123456" style="width: 100%; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 4px;">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="recovery-pwd-new" style="font-weight:600;">New Password</label>
+            <input type="password" id="recovery-pwd-new" required class="form-input" placeholder="••••••••" style="width: 100%;">
+          </div>
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label for="recovery-pwd-confirm" style="font-weight:600;">Confirm New Password</label>
+            <input type="password" id="recovery-pwd-confirm" required class="form-input" placeholder="••••••••" style="width: 100%;">
+          </div>
+          <div class="modal-actions-custom">
+            <button type="button" class="btn btn-secondary" id="btn-recovery-back">Back</button>
+            <button type="button" class="btn btn-primary" id="btn-recovery-submit">Reset Password</button>
+          </div>
+        </div>
+      `;
+    }
+    backdrop.innerHTML = html;
+    attachListeners();
+  };
+
+  const attachListeners = () => {
+    if (step === 1) {
+      backdrop.querySelector('#btn-recovery-cancel').addEventListener('click', () => backdrop.remove());
+      backdrop.querySelector('#btn-recovery-send').addEventListener('click', async () => {
+        const val = backdrop.querySelector('#recovery-input').value.trim();
+        if (!val) {
+          showToast('Please enter your Username or Email.', 'error');
+          return;
+        }
+        const btn = backdrop.querySelector('#btn-recovery-send');
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        try {
+          const res = await postJson('/api/forgot-password', { usernameOrEmail: val });
+          userId = res.userId;
+          const emailParts = res.email.split('@');
+          maskedEmail = emailParts[0].slice(0, 3) + '•••@' + emailParts[1];
+          showToast('OTP code sent successfully to your registered email.', 'success');
+          step = 2;
+          renderStep();
+        } catch (err) {
+          showToast(err.message || 'Account lookup failed.', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Send OTP';
+        }
+      });
+    } else if (step === 2) {
+      backdrop.querySelector('#btn-recovery-back').addEventListener('click', () => {
+        step = 1;
+        renderStep();
+      });
+      backdrop.querySelector('#btn-recovery-submit').addEventListener('click', async () => {
+        const otp = backdrop.querySelector('#recovery-otp').value.trim();
+        const pwd = backdrop.querySelector('#recovery-pwd-new').value;
+        const confirm = backdrop.querySelector('#recovery-pwd-confirm').value;
+
+        if (!otp || !pwd || !confirm) {
+          showToast('All fields are required.', 'error');
+          return;
+        }
+        if (pwd !== confirm) {
+          showToast('Passwords do not match.', 'error');
+          return;
+        }
+        if (pwd.length < 3) {
+          showToast('Password must be at least 3 characters.', 'error');
+          return;
+        }
+
+        const btn = backdrop.querySelector('#btn-recovery-submit');
+        btn.disabled = true;
+        btn.textContent = 'Resetting...';
+
+        try {
+          await postJson('/api/reset-password', { userId, otp, newPassword: pwd });
+          try {
+            updateUser(userId, { password: pwd, mustResetPassword: false });
+          } catch(e) {}
+          showToast('Password reset successfully! Please sign in.', 'success');
+          backdrop.remove();
+        } catch (err) {
+          showToast(err.message || 'Verification or reset failed.', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Reset Password';
+        }
+      });
+    }
+  };
+
+  document.body.appendChild(backdrop);
+  renderStep();
+}
+
+function openRequestNodalModal() {
+  const depts = getDepartments();
+  const deptOptionsHtml = depts.map(d => `<option value="${d.name}">${d.name} (${d.code})</option>`).join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom visible';
+  backdrop.style.zIndex = '10005';
+  backdrop.innerHTML = `
+    <div class="modal-card-custom animate-modal-in" style="max-width: 550px; text-align: left;">
+      <h3 class="modal-title-custom">Request State Nodal Account</h3>
+      <p class="modal-msg-custom">Request official credentials to access the SRF Portal. Your temporary password will be sent to your official email.</p>
+      <form id="public-register-form" autocomplete="off">
+        <select id="pub-state" required class="form-select" style="display:none;">
+          <option value="Andhra Pradesh" selected>Andhra Pradesh</option>
+        </select>
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="pub-district">District *</label>
+            <select id="pub-district" required class="form-select">
+              <option value="" disabled selected>Select District</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="pub-org">Department / Organization *</label>
+            <select id="pub-org" required class="form-select">
+              <option value="" disabled selected>Select Department</option>
+              ${deptOptionsHtml || '<option value="" disabled>No departments available.</option>'}
+            </select>
+          </div>
+        </div>
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="pub-name">Full Name *</label>
+            <input type="text" id="pub-name" required placeholder="e.g. Ramesh Kumar">
+          </div>
+          <div class="form-group">
+            <label for="pub-email">Official Email *</label>
+            <input type="email" id="pub-email" required placeholder="name@state.gov.in">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="pub-username">Desired Username *</label>
+          <input type="text" id="pub-username" required placeholder="e.g. ap_ramesh" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+        </div>
+        <div class="modal-actions-custom" style="margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" id="btn-pub-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit Request</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  
+  const form = backdrop.querySelector('#public-register-form');
+  const cancelBtn = backdrop.querySelector('#btn-pub-cancel');
+  const districtSelect = backdrop.querySelector('#pub-district');
+  const usernameInput = backdrop.querySelector('#pub-username');
+
+  // Strip spaces dynamically
+  usernameInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/\s+/g, '');
+  });
+
+  // Populate districts
+  const districts = statesDistrictsData["Andhra Pradesh"] || [];
+  districts.forEach(dist => {
+    const opt = document.createElement('option');
+    opt.value = dist;
+    opt.textContent = dist;
+    districtSelect.appendChild(opt);
+  });
+
+  const close = () => {
+    backdrop.remove();
+  };
+
+  cancelBtn.addEventListener('click', close);
+  
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = usernameInput.value.replace(/\s+/g, '').toLowerCase();
+    const name = backdrop.querySelector('#pub-name').value.trim();
+    const email = backdrop.querySelector('#pub-email').value.trim();
+    const organization = backdrop.querySelector('#pub-org').value;
+    const state = 'Andhra Pradesh';
+    const district = districtSelect.value;
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    try {
+      const res = await postJson('/api/register-public', {
+        username, name, email, organization, state, district
+      });
+
+      if (res.success && res.user) {
+        if (!_db.users) _db.users = [];
+        _db.users.push(res.user);
+        try { localStorage.setItem(DB_KEY, JSON.stringify(_db)); } catch(e) {}
+      }
+
+      showToast('Registration request successful! Your welcome credentials have been emailed to you.', 'success');
+      close();
+    } catch (err) {
+      showToast(err.message || 'Self-registration failed.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Request';
+    }
+  });
+}
 
 
 
@@ -559,7 +894,7 @@ function openChangePasswordModal() {
       });
     } else if (step === 3) {
       document.getElementById('btn-cancel-change-pwd').addEventListener('click', () => backdrop.remove());
-      document.getElementById('btn-submit-change-pwd').addEventListener('click', () => {
+      document.getElementById('btn-submit-change-pwd').addEventListener('click', async () => {
         const newPwd = document.getElementById('change-pwd-new').value;
         const confirmPwd = document.getElementById('change-pwd-confirm').value;
 
@@ -576,12 +911,23 @@ function openChangePasswordModal() {
           return;
         }
 
-        updateUser(currentUser.id, { password: newPwd });
-        currentUser.password = newPwd;
-        sessionStorage.setItem('srf_current_user', JSON.stringify(currentUser));
-        addAuditLog(currentUser.id, 'Changed password via email OTP authentication', 'auth', currentUser.id);
-        showToast('Password changed successfully!', 'success');
-        backdrop.remove();
+        const submitBtn = document.getElementById('btn-submit-change-pwd');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Updating...';
+
+        try {
+          await postJson('/api/change-password', { userId: currentUser.id, newPassword: newPwd });
+          updateUser(currentUser.id, { password: newPwd });
+          currentUser.password = newPwd;
+          sessionStorage.setItem('srf_current_user', JSON.stringify(currentUser));
+          addAuditLog(currentUser.id, 'Changed password via email OTP authentication', 'auth', currentUser.id);
+          showToast('Password changed successfully!', 'success');
+          backdrop.remove();
+        } catch(err) {
+          showToast(err.message || 'Failed to update password.', 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Change Password';
+        }
       });
     }
   }
@@ -887,6 +1233,7 @@ function renderAdminSidebar() {
     tabs.push({ id: 'departments', label: 'Manage Departments', icon: '<path d="M4 21h16M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16H4V5zm4 4h2v2H8V9zm0 6h2v2H8v-2zm6-6h2v2h-2V9zm0 6h2v2h-2v-2z"/>', badge: '' });
     tabs.push({ id: 'assigned-details', label: 'Reassign Tasks', icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', badge: '' });
     tabs.push({ id: 'recycle-bin', label: 'Recycle Bin', icon: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>', badge: '' });
+    tabs.push({ id: 'governance', label: 'Governance & SLA', icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', badge: '' });
   }
 
   nav.innerHTML = tabs.map(t => `
@@ -916,6 +1263,7 @@ function renderAdminSidebar() {
 
 function switchAdminTab(tab) {
   pushToNavHistory({ role: 'admin', tab });
+  cleanupAllHeartbeats();
 
   if (window.chatPollingInterval) {
     clearInterval(window.chatPollingInterval);
@@ -930,7 +1278,7 @@ function switchAdminTab(tab) {
 
   // Hide all admin views
    ['admin-analytics-view','admin-editions-view','admin-tracker-view','schema-editor-panel',
-    'admin-users-view','admin-guidelines-view','admin-audit-view','admin-settings-view','admin-departments-view','admin-assigned-details-view','admin-messages-view','admin-recycle-bin-view'].forEach(id => {
+    'admin-users-view','admin-guidelines-view','admin-audit-view','admin-settings-view','admin-departments-view','admin-assigned-details-view','admin-messages-view','admin-recycle-bin-view','admin-governance-view'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -1003,6 +1351,11 @@ function switchAdminTab(tab) {
     case 'messages':
       showView('admin-messages-view');
       renderMessagesTab(document.getElementById('admin-messages-view'));
+      break;
+
+    case 'governance':
+      showView('admin-governance-view');
+      renderGovernancePanel(document.getElementById('admin-governance-view'));
       break;
   }
 }
@@ -1249,6 +1602,7 @@ function renderUsersPanel(container) {
           <div style="display:flex;gap:8px;">
             ${isSuperAdmin() ? `<button class="btn btn-primary" id="btn-create-admin">+ Create Admin</button>` : ''}
             <button class="btn btn-secondary" id="btn-create-user">+ Create User</button>
+            <button class="btn btn-outline" id="btn-bulk-import-users">📂 Bulk Import Users</button>
           </div>
         ` : ''}
       </div>
@@ -1301,6 +1655,11 @@ function renderUsersPanel(container) {
   // Create User
   container.querySelector('#btn-create-user')?.addEventListener('click', () => {
     openCreateUserModal(container);
+  });
+
+  // Bulk import
+  container.querySelector('#btn-bulk-import-users')?.addEventListener('click', () => {
+    openBulkImportUsersModal(container);
   });
 
   // Assign sections
@@ -1389,6 +1748,124 @@ const allStates = [
 ];
 
 
+
+function openBulkImportUsersModal(container) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom';
+  backdrop.innerHTML = `
+    <div class="modal-card-custom animate-modal-in" style="max-width: 700px;">
+      <h3 class="modal-title-custom">📂 Bulk Import Nodal Users</h3>
+      <p class="modal-msg-custom">Upload a JSON file or paste structured user records to create accounts in bulk.</p>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="font-weight:600; display:block; margin-bottom:6px;">Upload JSON File</label>
+        <input type="file" id="bulk-file-input" accept=".json" class="form-input" style="width:100%;">
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="font-weight:600; display:block; margin-bottom:6px;">Or Paste JSON Array</label>
+        <textarea id="bulk-json-text" class="form-input" style="width:100%; height:120px; font-family:monospace; font-size:12px; padding:8px;" placeholder='[
+  {
+    "username": "dist_node1",
+    "email": "nodal1@state.gov.in",
+    "role": "user",
+    "name": "Nodal Officer 1",
+    "organization": "Startup India",
+    "state": "Andhra Pradesh",
+    "district": "Visakhapatnam"
+  }
+]'></textarea>
+      </div>
+
+      <div id="bulk-import-results" style="margin-bottom: 16px; display:none; max-height:150px; overflow-y:auto; padding:10px; background:var(--bg-deep); border-radius:6px; font-size:12px;"></div>
+
+      <div class="modal-actions-custom" style="margin-top: 20px;">
+        <button type="button" class="btn btn-secondary" id="cancel-bulk-import">Cancel</button>
+        <button type="button" class="btn btn-primary" id="submit-bulk-import">Import Users</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  const fileInput = backdrop.querySelector('#bulk-file-input');
+  const jsonText = backdrop.querySelector('#bulk-json-text');
+  const cancelBtn = backdrop.querySelector('#cancel-bulk-import');
+  const submitBtn = backdrop.querySelector('#submit-bulk-import');
+  const resultsDiv = backdrop.querySelector('#bulk-import-results');
+
+  const close = () => {
+    backdrop.classList.remove('visible');
+    setTimeout(() => backdrop.remove(), 200);
+  };
+
+  cancelBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      jsonText.value = event.target.result;
+    };
+    reader.readAsText(file);
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    let usersList = [];
+    try {
+      usersList = JSON.parse(jsonText.value.trim());
+      if (!Array.isArray(usersList)) {
+        throw new Error('JSON payload must be a root-level array of user objects.');
+      }
+    } catch (err) {
+      showToast(`Invalid JSON payload: ${err.message}`, 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Importing...';
+    resultsDiv.style.display = 'none';
+
+    try {
+      const res = await importUsersBulk(usersList);
+      if (res.error) {
+        showToast(res.error, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Import Users';
+        return;
+      }
+
+      // Show stats
+      resultsDiv.style.display = 'block';
+      resultsDiv.innerHTML = `
+        <strong style="color:var(--success);">✓ Bulk Import Finished!</strong>
+        <p style="margin:4px 0 0 0;">Successfully registered: <strong>${res.createdCount} accounts</strong></p>
+        \${res.errors && res.errors.length > 0 ? \`
+          <p style="margin:8px 0 2px 0; font-weight:bold; color:var(--danger);">Errors encountered (\${res.errors.length}):</p>
+          <ul style="margin:0; padding-left:20px; color:var(--danger);">
+            \${res.errors.map(e => \`<li>\${e}</li>\`).join('')}
+          </ul>
+        \` : ''}
+      `;
+      showToast(`Bulk registration complete. Imported ${res.createdCount} users.`, 'success');
+      
+      // Refresh User directory panel in background
+      if (container) {
+        renderUsersPanel(container);
+      }
+      
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Import Users';
+    } catch (err) {
+      showToast(`Network error: \${err.message}`, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Import Users';
+    }
+  });
+}
 
 function openCreateUserModal(container) {
   const depts = getDepartments();
@@ -1486,18 +1963,21 @@ function openCreateUserModal(container) {
   cancelBtn.addEventListener('click', close);
   backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = backdrop.querySelector('#reg-username').value.replace(/\s+/g, '').toLowerCase();
-    const password = 'Pass_' + Math.floor(100000 + Math.random() * 900000);
     const state    = backdrop.querySelector('#reg-state').value.trim();
     const officer  = backdrop.querySelector('#reg-officer').value.trim();
     const district = backdrop.querySelector('#reg-district').value.trim();
     const email    = backdrop.querySelector('#reg-email').value.trim();
     const organization = backdrop.querySelector('#reg-org').value;
 
-    const result = createUser({
-      username, password, email,
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
+    const result = await createUser({
+      username, email,
       role: 'user',
       name: officer,
       organization,
@@ -1508,18 +1988,15 @@ function openCreateUserModal(container) {
 
     if (result.error) {
       showToast(result.error, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create User';
       return;
     }
 
     addAuditLog(getCurrentUser().id, `Registered state user: ${username}`, 'user', result.id);
     close();
     
-    // Display visual alert with details for the admin to copy
-    showAlert({
-      title: 'User Account Created',
-      message: `User "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${password}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
-    });
-
+    showToast('User Created Successfully', 'success');
     renderUsersPanel(container);
   });
 }
@@ -1622,13 +2099,12 @@ function openCreateAdminModal(container) {
   cancelBtn.addEventListener('click', close);
   backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = backdrop.querySelector('#admin-name').value.trim();
     const email = backdrop.querySelector('#admin-email').value.trim();
     const organization = backdrop.querySelector('#admin-org').value;
     const username = backdrop.querySelector('#admin-username').value.replace(/\s+/g, '').toLowerCase();
-    const password = 'Pass_' + Math.floor(100000 + Math.random() * 900000);
     const state = backdrop.querySelector('#admin-state').value || '';
     const district = backdrop.querySelector('#admin-district').value || '';
 
@@ -1637,9 +2113,12 @@ function openCreateAdminModal(container) {
       return;
     }
 
-    const result = createUser({
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
+    const result = await createUser({
       username,
-      password,
       email,
       role: 'admin',
       name,
@@ -1650,18 +2129,15 @@ function openCreateAdminModal(container) {
 
     if (result.error) {
       showToast(result.error, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Admin';
       return;
     }
 
     addAuditLog(getCurrentUser().id, `Created admin user: ${username}`, 'user', result.id);
     close();
 
-    // Display visual alert with details for the admin to copy
-    showAlert({
-      title: 'Admin Account Created',
-      message: `Admin "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${password}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
-    });
-
+    showToast('User Created Successfully', 'success');
     renderUsersPanel(container);
   });
 }
@@ -1906,15 +2382,13 @@ function openAssignmentModal(userId, container) {
       return;
     }
 
-    assignmentsToCreate.forEach(data => {
-      createAssignment(userId, data, getCurrentUser().id);
-    });
+    const createdCount = createAssignmentsBulk(userId, assignmentsToCreate, getCurrentUser().id);
 
     addNotification(userId, NOTIFICATION_EVENTS.SECTION_ASSIGNED,
       `You have been assigned new responsibilities in ${getEditionById(editionId)?.name || 'an edition'}.`);
-    addAuditLog(getCurrentUser().id, `Assigned ${assignmentsToCreate.length} items to user ${userId}`, 'user', userId);
+    addAuditLog(getCurrentUser().id, `Bulk assigned ${createdCount} items to user ${userId}`, 'user', userId);
     
-    showToast(`${assignmentsToCreate.length} assignment(s) saved successfully!`, 'success');
+    showToast(`${createdCount} new assignment(s) saved successfully!`, 'success');
     backdrop.remove();
   });
 }
@@ -2985,7 +3459,7 @@ function renderSettingsPanel(container) {
     };
 
     const headers = [
-      'User ID', 'Name', 'Username', 'Email', 'Password',
+      'User ID', 'Name', 'Username', 'Email',
       'Organization', 'State', 'Category', 'District', 'Sector',
       'Nodal Officer', 'Startup Name', 'Status', 'Created At'
     ];
@@ -2998,7 +3472,6 @@ function renderSettingsPanel(container) {
         escapeCSV(u.name || ''),
         escapeCSV(u.username || ''),
         escapeCSV(u.email || ''),
-        escapeCSV(u.password || ''),
         escapeCSV(u.organization || ''),
         escapeCSV(u.state || ''),
         escapeCSV(u.category || ''),
@@ -3038,7 +3511,7 @@ function renderSettingsPanel(container) {
     };
 
     const headers = [
-      'User ID', 'Name', 'Username', 'Email', 'Password',
+      'User ID', 'Name', 'Username', 'Email',
       'Role', 'Organization', 'Status', 'Created At'
     ];
 
@@ -3050,7 +3523,6 @@ function renderSettingsPanel(container) {
         escapeCSV(u.name || ''),
         escapeCSV(u.username || ''),
         escapeCSV(u.email || ''),
-        escapeCSV(u.password || ''),
         escapeCSV(u.role || ''),
         escapeCSV(u.organization || ''),
         escapeCSV(u.active === false ? 'Deactivated' : 'Active'),
@@ -3190,6 +3662,7 @@ function renderUserSidebar() {
 
 function switchUserTab(tab) {
   pushToNavHistory({ role: 'user', tab });
+  cleanupAllHeartbeats();
 
   if (window.chatPollingInterval) {
     clearInterval(window.chatPollingInterval);
@@ -3959,15 +4432,85 @@ function getGuidelinePageForQuestion(num) {
   return map[num] || (9 + sec * 2);
 }
 
-// ─── APPLICATION FORM ─────────────────────────────────────────────────────
-function openApplicationForm(appId, container, allowRemainingUploads = null) {
+async function openApplicationForm(appId, container, allowRemainingUploads = null) {
   window.workspaceLock = true;
   activeApplicationId = appId;
   activeUserFormContainer = container;
+
+  const app = getApplicationById(appId);
+  if (!app) return;
+  const user = getCurrentUser();
+
+  // Clear existing heartbeat
+  if (window.formLockHeartbeat) {
+    clearInterval(window.formLockHeartbeat);
+    window.formLockHeartbeat = null;
+  }
+
+  // Check Lock Status
+  const lockStatus = await getLockStatus(appId);
+  if (lockStatus.locked && lockStatus.userId !== user.id) {
+    const lockUser = lockStatus.username || lockStatus.lockedBy;
+    const expiryMin = lockStatus.durationRemaining !== undefined ? Math.ceil(lockStatus.durationRemaining / 60) : '?';
+    container.innerHTML = `
+      <div class="section-card" style="margin-bottom: 24px; text-align: center; padding: 40px 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+        <h2 style="color: var(--danger);">Application is Locked for Editing</h2>
+        <p style="font-size: 14px; color: var(--text-muted); max-width: 500px; margin: 8px auto 24px auto;">
+          This application is currently locked by <strong>${lockUser}</strong> (Reason: ${lockStatus.reason || 'Editing'}).
+          The lock will automatically expire in approximately <strong>${expiryMin} minutes</strong>.
+        </p>
+        <div style="display:flex; justify-content:center; gap:12px;">
+          <button class="btn btn-secondary" id="btn-lock-back">Go Back</button>
+          ${user.role === 'superadmin' ? `<button class="btn btn-danger" id="btn-lock-force-unlock">Force Unlock (Super Admin)</button>` : ''}
+        </div>
+      </div>
+    `;
+    container.querySelector('#btn-lock-back').addEventListener('click', () => {
+      window.workspaceLock = false;
+      activeUserTab = 'dashboard';
+      const sb = document.getElementById('sidebar-nav-container');
+      if (sb) sb.innerHTML = '';
+      renderUserSidebar();
+      switchUserTab('dashboard');
+    });
+    if (user.role === 'superadmin') {
+      container.querySelector('#btn-lock-force-unlock').addEventListener('click', async () => {
+        const confirmResult = await showConfirm({
+          title: 'Force Unlock Application',
+          message: 'Are you sure you want to release the edit lock? Unsaved modifications by the active editor will not be persisted.',
+          confirmText: 'Release Lock',
+          cancelText: 'Cancel'
+        });
+        if (confirmResult) {
+          const unlockRes = await releaseLock(appId, true, 'Super Admin Force Override');
+          if (unlockRes.success) {
+            showToast('Lock overridden!', 'success');
+            openApplicationForm(appId, container);
+          } else {
+            showAlert({ title: 'Override Failed', message: 'Failed to release lock.', type: 'error' });
+          }
+        }
+      });
+    }
+    return;
+  }
+
+  // Not locked: Acquire Lock
+  const acquireRes = await acquireLock(appId, 'Editing Application Form');
+  if (!acquireRes.success) {
+    showAlert({ title: 'Lock Acquisition Failed', message: acquireRes.error || 'Could not lock application.', type: 'error' });
+    return;
+  }
+
+  // Start heartbeat renewal
+  window.formLockHeartbeat = setInterval(async () => {
+    await acquireLock(appId, 'Heartbeat renewal');
+  }, 30000);
+
   if (allowRemainingUploads !== null) {
     currentFormAllowRemainingUploads = allowRemainingUploads;
   } else {
-    const app = getApplicationById(appId);
     if (app && app.status === 'Additional Documents Requested') {
       currentFormAllowRemainingUploads = true;
     } else {
@@ -3977,9 +4520,6 @@ function openApplicationForm(appId, container, allowRemainingUploads = null) {
   pushToNavHistory({ role: 'user', tab: 'form', appId });
   activeUserTab = 'form';
 
-  const app = getApplicationById(appId);
-  if (!app) return;
-  const user = getCurrentUser();
   if (user.role === 'user' && app.userId !== user.id) {
     showAlert({ title: 'Access Denied', message: 'You are not authorized to view this application.', type: 'error' });
     activeUserTab = 'dashboard';
@@ -4151,7 +4691,7 @@ function openApplicationForm(appId, container, allowRemainingUploads = null) {
               ${(isQuestionEditable && existing?.fileStatus !== 'Approved') || isRejected ? `
                 <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
                   ${existing ? 'Replace' : 'Upload'}
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
                 </label>
               ` : ''}
             </div>
@@ -4186,12 +4726,12 @@ function openApplicationForm(appId, container, allowRemainingUploads = null) {
                 <button class="btn btn-xs btn-outline btn-delete-custom-doc" data-field-id="${field.id}" data-doc-id="${f.docId}" style="color:var(--danger); border-color:rgba(239,68,68,0.2); margin-right:4px;">✕ Remove</button>
                 <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
                   Replace
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
                 </label>
               ` : isRejected ? `
                 <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
                   Replace
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
                 </label>
               ` : ''}
             </div>
@@ -4208,7 +4748,7 @@ function openApplicationForm(appId, container, allowRemainingUploads = null) {
               <label class="btn btn-xs btn-outline" style="cursor:pointer; height:32px; font-size:12px; display:inline-flex; align-items:center; gap:4px; border-style:dashed;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><path d="M20.42 10.18a8.87 8.87 0 0 0-14.7-2.06 6 6 0 0 0-.15 11.88"/></svg>
                 Upload Multiple Files
-                <input type="file" class="other-doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" multiple>
+                <input type="file" class="other-doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv" multiple>
               </label>
             </div>
           ` : '<div></div>'}
@@ -7669,10 +8209,99 @@ function openRecycleBinViewModal(item, onRestore, onDelete) {
       </div>
     `;
   } else if (item.type === 'application') {
-    payloadContent = formatPayload(item.appData);
+    const userObj = getUserById(item.appData?.userId);
+    const userInfoHtml = userObj ? `
+      <div style="margin-top:10px; padding:10px; background:var(--bg-secondary); border-radius:6px; border:1px solid var(--border-color);">
+        <h5 style="margin:0 0 6px 0; font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">User Information</h5>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div><strong>Name:</strong> ${userObj.name || userObj.username || '—'}</div>
+          <div><strong>Email:</strong> ${userObj.email || '—'}</div>
+          <div><strong>Organization:</strong> ${userObj.organization || '—'}</div>
+          <div><strong>Contact:</strong> ${userObj.phone || userObj.contact || '—'}</div>
+        </div>
+      </div>
+    ` : '<p style="color:var(--text-muted);">No associated user information found.</p>';
+
+    const statusHistoryHtml = (item.appData?.timeline || []).length > 0 ? `
+      <div style="margin-top:10px; padding:10px; background:var(--bg-secondary); border-radius:6px; border:1px solid var(--border-color);">
+        <h5 style="margin:0 0 6px 0; font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Status History / Timeline</h5>
+        <div style="max-height:120px; overflow-y:auto; font-size:12px;">
+          ${item.appData.timeline.map(t => `
+            <div style="margin-bottom:6px; border-bottom:1px dashed var(--border-color); padding-bottom:4px;">
+              <div><strong>${t.action}</strong> by ${t.by}</div>
+              <div style="color:var(--text-muted); font-size:11px;">${new Date(t.timestamp).toLocaleString('en-IN')}</div>
+              ${t.remarks ? `<div style="font-style:italic; color:var(--text-dark); margin-top:2px;">"${t.remarks}"</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '<p style="color:var(--text-muted);">No status history timeline found.</p>';
+
+    const allFiles = [];
+    (item.answersData || []).forEach(ans => {
+      if (ans.files && Array.isArray(ans.files)) {
+        ans.files.forEach(f => {
+          allFiles.push({
+            name: f.name,
+            type: f.type,
+            size: f.size,
+            docId: f.docId,
+            fieldId: ans.fieldId,
+            appId: ans.applicationId || item.appData?.id || ''
+          });
+        });
+      }
+    });
+
+    const uploadedDocsHtml = allFiles.length > 0 ? `
+      <div style="margin-top:10px; padding:10px; background:var(--bg-secondary); border-radius:6px; border:1px solid var(--border-color);">
+        <h5 style="margin:0 0 6px 0; font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Uploaded Documents</h5>
+        <div style="font-size:12px; display:flex; flex-direction:column; gap:6px;">
+          ${allFiles.map(file => {
+            const downloadUrl = `/api/files/${file.appId}/${file.fieldId}/${file.docId}`;
+            const sizeStr = file.size ? ` (${(file.size / 1024).toFixed(1)} KB)` : '';
+            return `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--border-color);">
+                <span style="font-weight:500; color:var(--text-dark); word-break:break-all;">📄 ${file.name}${sizeStr} <span style="font-size:11px; color:var(--text-muted);">(${file.fieldId})</span></span>
+                <a href="${downloadUrl}" target="_blank" class="btn btn-xs btn-outline" style="padding:2px 8px; font-size:11px; white-space:nowrap; text-decoration:none;">Download</a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '<p style="color:var(--text-muted);">No uploaded documents found.</p>';
+
+    const formDataHtml = (item.answersData || []).length > 0 ? `
+      <div style="margin-top:10px; padding:10px; background:var(--bg-secondary); border-radius:6px; border:1px solid var(--border-color);">
+        <h5 style="margin:0 0 6px 0; font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Form Responses / Answers</h5>
+        <div style="max-height:180px; overflow-y:auto; font-size:12px;">
+          ${item.answersData.map(ans => `
+            <div style="margin-bottom:8px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
+              <div style="font-weight:600; color:var(--text-main);">Question/Field: ${ans.fieldId}</div>
+              <div style="background:var(--bg-primary); padding:6px; border-radius:4px; margin-top:2px;">
+                <strong>Response:</strong> ${ans.value || '<span style="color:var(--text-muted);">Empty</span>'}
+                ${ans.remarks ? `<br><strong>Remarks:</strong> ${ans.remarks}` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '<p style="color:var(--text-muted);">No form responses / answers available.</p>';
+
+    payloadContent = `
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+        ${userInfoHtml}
+        ${uploadedDocsHtml}
+        ${formDataHtml}
+        ${statusHistoryHtml}
+      </div>
+    `;
+
     entityDetailsHtml = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; font-size:13px; color:var(--text-dark);">
-        <div><strong>Organization/Dept:</strong> ${item.appData?.organization || '—'}</div>
+        <div><strong>Application ID:</strong> ${item.appData?.id || '—'}</div>
+        <div><strong>Edition:</strong> ${item.appData?.editionId || '—'}</div>
+        <div><strong>Financial Year:</strong> ${item.appData?.financialYear || '—'}</div>
         <div><strong>State/UT:</strong> ${item.appData?.state || '—'}</div>
         <div><strong>Current Status:</strong> ${item.appData?.status || '—'}</div>
         <div><strong>Answers Count:</strong> ${item.answersData?.length || 0}</div>
@@ -7830,7 +8459,7 @@ function renderRecycleBinPanel(container) {
     startDate: '',
     endDate: '',
     currentPage: 1,
-    pageSize: 10
+    pageSize: 5
   };
   const state = container.state;
 

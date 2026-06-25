@@ -76,14 +76,14 @@ class EmailService {
     }
   }
 
-  async sendWelcomeEmail(toEmail, username, password, role) {
+  async sendWelcomeEmail(toEmail, username, password, role, loginUrl = 'http://localhost:3000') {
     if (!this.transporter) {
       this.configureTransporter();
     }
 
     if (!this.transporter) {
       console.warn('⚠️ SMTP not configured. Printing credentials to server console instead:');
-      console.log(`[Welcome Email Mock] To: ${toEmail}, Username: ${username}, Password: ${password}, Role: ${role}`);
+      console.log(`[Welcome Email Mock] To: ${toEmail}, Username: ${username}, Password: ${password}, Role: ${role}, Login URL: ${loginUrl}`);
       return;
     }
 
@@ -97,12 +97,12 @@ class EmailService {
           <p style="color: #4b5563; font-size: 16px;">An account has been created for you as an <strong>${role}</strong>.</p>
           
           <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 0 0 10px 0; color: #1f2937; font-size: 14px;"><strong>Portal URL:</strong> <a href="http://localhost:3000">http://localhost:3000</a></p>
+            <p style="margin: 0 0 10px 0; color: #1f2937; font-size: 14px;"><strong>Portal URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
             <p style="margin: 0 0 10px 0; color: #1f2937; font-size: 14px;"><strong>Username:</strong> ${username}</p>
             <p style="margin: 0; color: #1f2937; font-size: 14px;"><strong>Temporary Password:</strong> <code style="font-size: 16px; font-weight: bold; background: #e5e7eb; padding: 2px 6px; border-radius: 4px;">${password}</code></p>
           </div>
           
-          <p style="color: #4b5563; font-size: 14px; line-height: 1.5;">Please log in using the credentials above. You can change your password at any time from the dashboard settings.</p>
+          <p style="color: #4b5563; font-size: 14px; line-height: 1.5;">Please log in using the credentials above. You will be required to change your password upon your first login.</p>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px;">
             This is an automated system email. Do not reply to this address.

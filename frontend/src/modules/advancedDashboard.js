@@ -1861,6 +1861,51 @@ export function renderAdminAnalyticsDashboard(container) {
       </div>
     </div>
     `}
+ 
+    <!-- System Database Validation Metrics (Phase 13) -->
+    <div style="margin-bottom:28px;">
+      <h3 style="font-size:16px; font-weight:700; margin-bottom:12px; color:var(--text-dark); display:flex; align-items:center; gap:8px;">
+        <span>📊</span> System Database Validation Metrics (Real-time Counts)
+      </h3>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px;">
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--accent-indigo);">
+          <div style="font-size:20px; font-weight:800; color:var(--accent-indigo);">${allFilteredApps.length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Total Applications</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--accent-blue);">
+          <div style="font-size:20px; font-weight:800; color:var(--accent-blue);">${allFilteredApps.filter(a => a.status === 'Draft').length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Draft Applications</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--warning);">
+          <div style="font-size:20px; font-weight:800; color:var(--warning);">${allFilteredApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)).length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Submitted Applications</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--success);">
+          <div style="font-size:20px; font-weight:800; color:var(--success);">${allFilteredApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved'].includes(a.status)).length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Approved Applications</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--danger);">
+          <div style="font-size:20px; font-weight:800; color:var(--danger);">${allFilteredApps.filter(a => a.status === 'Rejected').length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Rejected Applications</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #059669;">
+          <div style="font-size:20px; font-weight:800; color:#059669;">${(db.editions || []).filter(e => e.status === 'published' && !e.isDeleted).length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Published Forms</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #6b7280;">
+          <div style="font-size:20px; font-weight:800; color:#6b7280;">${(db.editions || []).filter(e => e.status === 'draft' && !e.isDeleted).length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Unpublished Forms</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #8b5cf6;">
+          <div style="font-size:20px; font-weight:800; color:#8b5cf6;">${activeUsers.length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Active Users</div>
+        </div>
+        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #ec4899;">
+          <div style="font-size:20px; font-weight:800; color:#ec4899;">${(db.users || []).filter(u => ['admin', 'superadmin'].includes(u.role) && u.active !== false && (isSuper || adminOrg === 'DPIIT' || u.organization === adminOrg)).length}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Active Admins</div>
+        </div>
+      </div>
+    </div>
 
     <!-- Executive Graphs (Full Width) -->
     <div class="card glass-card" style="margin-bottom:24px;">

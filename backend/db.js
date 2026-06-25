@@ -33,7 +33,10 @@ const userSchema = new mongoose.Schema({
   startupName: String,
   createdAt: String,
   lastLogin: String,
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  mustResetPassword: { type: Boolean, default: false },
+  delegatedTo: String,
+  delegationActive: { type: Boolean, default: false }
 }, { minimize: false });
 
 const editionSchema = new mongoose.Schema({
@@ -176,11 +179,16 @@ const assignmentSchema = new mongoose.Schema({
 const auditLogSchema = new mongoose.Schema({
   id: { type: String, unique: true, required: true },
   userId: String, // Reference ID to User
+  username: String,
+  role: String,
   action: String,
   entityType: String,
   entityId: String,
   details: String,
-  timestamp: String
+  timestamp: String,
+  date: String,
+  time: String,
+  ipAddress: String
 }, { minimize: false });
 
 const schemaVersionSchema = new mongoose.Schema({
@@ -265,6 +273,63 @@ const recycleBinSchema = new mongoose.Schema({
   deletedBy: String
 }, { minimize: false });
 
+// Text Indexes for Optimized Global Search
+userSchema.index({ username: 'text', name: 'text', email: 'text', organization: 'text' });
+applicationSchema.index({ id: 'text', status: 'text', state: 'text', organization: 'text' });
+applicationAnswerSchema.index({ value: 'text' });
+assignmentSchema.index({ responsibility: 'text', type: 'text' });
+notificationSchema.index({ message: 'text', eventType: 'text' });
+auditLogSchema.index({ action: 'text', details: 'text', username: 'text' });
+
+// Enterprise Hardening Schemas
+const applicationVersionSchema = new mongoose.Schema({
+  id: { type: String, unique: true, required: true },
+  applicationId: String,
+  versionNumber: Number,
+  status: String,
+  updatedBy: String,
+  updatedAt: String,
+  changeSummary: String
+}, { minimize: false });
+
+const applicationVersionAnswerSchema = new mongoose.Schema({
+  id: { type: String, unique: true, required: true },
+  versionId: String,
+  questionId: String,
+  answerValue: String,
+  fileReferences: [mongoose.Schema.Types.Mixed]
+}, { minimize: false });
+
+const applicationLockSchema = new mongoose.Schema({
+  id: { type: String, unique: true, required: true },
+  applicationId: String,
+  userId: String,
+  lockedAt: String,
+  expiresAt: String,
+  reason: String,
+  forceUnlockBy: String,
+  forceUnlockReason: String,
+  forceUnlockedAt: String
+}, { minimize: false });
+
+const slaSettingsSchema = new mongoose.Schema({
+  id: { type: String, unique: true, required: true },
+  submissionDays: Number,
+  reviewDays: Number,
+  approvalDays: Number,
+  escalationDays: Number,
+  reminderFrequency: Number
+}, { minimize: false });
+
+const backupRecordSchema = new mongoose.Schema({
+  id: { type: String, unique: true, required: true },
+  backupDate: String,
+  size: Number,
+  triggeredBy: String,
+  status: String,
+  restoreStatus: String
+}, { minimize: false });
+
 // Export Models
 export const User = mongoose.model('User', userSchema);
 export const Edition = mongoose.model('Edition', editionSchema);
@@ -283,5 +348,12 @@ export const Department = mongoose.model('Department', departmentSchema);
 export const ReassignmentHistory = mongoose.model('ReassignmentHistory', reassignmentHistorySchema);
 export const Message = mongoose.model('Message', messageSchema);
 export const RecycleBin = mongoose.model('RecycleBin', recycleBinSchema);
+
+export const ApplicationVersion = mongoose.model('ApplicationVersion', applicationVersionSchema);
+export const ApplicationVersionAnswer = mongoose.model('ApplicationVersionAnswer', applicationVersionAnswerSchema);
+export const ApplicationLock = mongoose.model('ApplicationLock', applicationLockSchema);
+export const SLASettings = mongoose.model('SLASettings', slaSettingsSchema);
+export const BackupRecord = mongoose.model('BackupRecord', backupRecordSchema);
+
 
 

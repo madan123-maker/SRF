@@ -460,11 +460,83 @@ function _renderAnswerPreview(field, value) {
 }
 
 // ─── APPLICATION DETAIL VIEW ───────────────────────────────────────────────
-export function renderApplicationDetail(container, appId, onBack) {
+export async function renderApplicationDetail(container, appId, onBack) {
   window.workspaceLock = true;
   let app = Store.getApplicationById(appId);
   if (!app) return;
   const currentUser = getCurrentUser();
+
+  // Clear existing heartbeat
+  if (window.detailLockHeartbeat) {
+    clearInterval(window.detailLockHeartbeat);
+    window.detailLockHeartbeat = null;
+  }
+
+  // Check Lock Status
+  const lockStatus = await Store.getLockStatus(appId);
+  if (lockStatus.locked && lockStatus.userId !== currentUser.id) {
+    const lockUser = lockStatus.username || lockStatus.lockedBy;
+    const expiryMin = lockStatus.durationRemaining !== undefined ? Math.ceil(lockStatus.durationRemaining / 60) : '?';
+    container.innerHTML = `
+      <div style="margin-bottom:24px;">
+        <button id="btn-lock-back-tracker" class="btn btn-secondary btn-sm">← Back</button>
+      </div>
+      <div class="section-card" style="margin-bottom: 24px; text-align: center; padding: 40px 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+        <h2 style="color: var(--danger);">Application is Locked for Review</h2>
+        <p style="font-size: 15px; color: var(--text-muted); max-width: 500px; margin: 8px auto 24px auto;">
+          This application is currently locked by reviewer <strong>${lockUser}</strong> (Reason: ${lockStatus.reason || 'None'}).
+          The lock will automatically expire in approximately <strong>${expiryMin} minutes</strong>.
+        </p>
+        <div style="display:flex; justify-content:center; gap:12px;">
+          <button class="btn btn-secondary" id="btn-lock-back-tracker-btn">Go Back</button>
+          ${currentUser.role === 'superadmin' ? `<button class="btn btn-danger" id="btn-lock-force-unlock-btn">Force Unlock (Super Admin)</button>` : ''}
+        </div>
+      </div>
+    `;
+
+    const goBack = () => {
+      window.workspaceLock = false;
+      if (onBack) onBack();
+    };
+    container.querySelector('#btn-lock-back-tracker').addEventListener('click', goBack);
+    container.querySelector('#btn-lock-back-tracker-btn').addEventListener('click', goBack);
+
+    if (currentUser.role === 'superadmin') {
+      container.querySelector('#btn-lock-force-unlock-btn').addEventListener('click', async () => {
+        const confirmResult = await showConfirm({
+          title: 'Force Unlock Application',
+          message: 'Are you sure you want to release the edit lock? Unsaved remarks by the active reviewer will not be persisted.',
+          confirmText: 'Release Lock',
+          cancelText: 'Cancel'
+        });
+        if (confirmResult) {
+          const unlockRes = await Store.releaseLock(appId, true, 'Super Admin Force Override');
+          if (unlockRes.success) {
+            showToast('Lock overridden!', 'success');
+            renderApplicationDetail(container, appId, onBack);
+          } else {
+            showAlert({ title: 'Override Failed', message: 'Failed to release lock.', type: 'error' });
+          }
+        }
+      });
+    }
+    return;
+  }
+
+  // Not locked: Acquire Lock
+  const acquireRes = await Store.acquireLock(appId, 'Reviewing Application');
+  if (!acquireRes.success) {
+    showAlert({ title: 'Lock Acquisition Failed', message: acquireRes.error || 'Could not lock application.', type: 'error' });
+    if (onBack) onBack();
+    return;
+  }
+
+  // Start heartbeat renewal
+  window.detailLockHeartbeat = setInterval(async () => {
+    await Store.acquireLock(appId, 'Heartbeat renewal');
+  }, 30000);
+
   if (currentUser && currentUser.role === 'user' && app.userId !== currentUser.id) {
     container.innerHTML = `
       <div class="empty-state">
@@ -713,8 +785,13 @@ export function renderApplicationDetail(container, appId, onBack) {
     </div>
   `;
 
-  container.querySelector('#btn-back-tracker').addEventListener('click', () => {
+  container.querySelector('#btn-back-tracker').addEventListener('click', async () => {
     window.workspaceLock = false;
+    if (window.detailLockHeartbeat) {
+      clearInterval(window.detailLockHeartbeat);
+      window.detailLockHeartbeat = null;
+    }
+    await Store.releaseLock(appId);
     if (onBack) onBack();
   });
 
