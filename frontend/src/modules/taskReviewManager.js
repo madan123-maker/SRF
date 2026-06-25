@@ -506,7 +506,9 @@ function injectStyles() {
  */
 function getStatusBadge(status) {
   const norm = (status || '').trim();
-  if (norm === 'Approved') return `<span class="tr-badge tr-badge-approved">Approved</span>`;
+  if (norm === 'Final Approved' || norm === 'Approved') return `<span class="tr-badge tr-badge-approved">Final Approved</span>`;
+  if (norm === 'Admin Approved') return `<span class="tr-badge tr-badge-pending" style="background: rgba(14, 165, 233, 0.09) !important; color: #0284c7 !important; border: 1px solid rgba(14, 165, 233, 0.25) !important;">Admin Approved</span>`;
+  if (norm === 'Super Admin Review') return `<span class="tr-badge tr-badge-resubmitted" style="background: rgba(139, 92, 246, 0.09) !important; color: #7c3aed !important; border: 1px solid rgba(139, 92, 246, 0.25) !important;">Super Admin Review</span>`;
   if (norm === 'Rejected') return `<span class="tr-badge tr-badge-rejected">Rejected</span>`;
   if (norm === 'Additional Documents Requested' || norm === 'Docs Requested') {
     return `<span class="tr-badge tr-badge-requested">Docs Requested</span>`;
@@ -628,16 +630,40 @@ export function renderTaskReviewPanel(container) {
   const allEditions = db.editions || [];
   const allUsers = Store.getUsers();
 
-  const approvedCount = allApplications.filter(app => app.status === 'Approved').length;
+  const approvedCount = allApplications.filter(app => ['Admin Approved', 'Final Approved', 'Approved'].includes(app.status)).length;
   const rejectedCount = allApplications.filter(app => app.status === 'Rejected').length;
 
   // Filter application list based on role and tab selection
   let reviewableApps = [...allApplications];
   
-  // Filter strictly by review queue statuses
-  const reviewStatuses = ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested', 'Approved', 'Rejected'];
-  reviewableApps = reviewableApps.filter(app => reviewStatuses.includes(app.status));
+  const adminOrg = currentUser.organization || '';
 
+  reviewableApps = reviewableApps.filter(app => {
+    // 1. Exclude applications where parent edition is not published
+    const ed = allEditions.find(e => e.id === app.editionId);
+    if (!ed || ed.isDeleted || ed.status !== 'published') return false;
+
+    // 2. Filter standard Admin apps to their department (or DPIIT central)
+    if (currentUser.role === 'admin' || currentUser.role === 'reviewer') {
+      if (adminOrg !== 'DPIIT') {
+        const applicant = allUsers.find(u => u.id === app.userId);
+        if (!applicant || applicant.organization !== adminOrg) return false;
+      }
+    }
+
+    // 3. Filter by role statuses
+    if (currentUser.role === 'superadmin') {
+      const superAdminAllowed = ['Admin Approved', 'Super Admin Review', 'Final Approved', 'Rejected'];
+      if (!superAdminAllowed.includes(app.status)) return false;
+    } else {
+      // Standard Admin/Reviewer: sees everything except Draft
+      if (app.status === 'Draft') return false;
+    }
+
+    return true;
+  });
+
+  // Keep assignment filters
   if (currentUser.role === 'admin' || currentUser.role === 'reviewer') {
     reviewableApps = reviewableApps.filter(app => app.assignedReviewer === currentUser.id);
   } else if (currentUser.role === 'superadmin') {
@@ -1119,8 +1145,43 @@ function renderWorkspace(container) {
     return;
   }
 
-  // LOCKING MECHANISM
+  // Multi-tier application transitions when opened
   const currentUser = getCurrentUser();
+  let statusChanged = false;
+  if (currentUser.role === 'superadmin' && app.status === 'Admin Approved') {
+    app.status = 'Super Admin Review';
+    app.updatedAt = new Date().toISOString();
+    app.timeline = app.timeline || [];
+    app.timeline.push({
+      id: `tl_${Date.now()}`,
+      action: 'Opened for Super Admin Review',
+      details: `Application opened by Super Admin ${currentUser.name || currentUser.username}`,
+      userId: currentUser.id,
+      timestamp: new Date().toISOString()
+    });
+    statusChanged = true;
+  } else if ((currentUser.role === 'admin' || currentUser.role === 'reviewer') && ['Submitted', 'Resubmitted'].includes(app.status)) {
+    app.status = 'Under Review';
+    app.updatedAt = new Date().toISOString();
+    app.timeline = app.timeline || [];
+    app.timeline.push({
+      id: `tl_${Date.now()}`,
+      action: 'Opened for Review',
+      details: `Application opened by Department Admin ${currentUser.name || currentUser.username}`,
+      userId: currentUser.id,
+      timestamp: new Date().toISOString()
+    });
+    statusChanged = true;
+  }
+  
+  if (statusChanged) {
+    Store.scheduleSave();
+    try {
+      syncGlobalStateWithoutReload(app.id);
+    } catch(e) {}
+  }
+
+  // LOCKING MECHANISM
   const now = Date.now();
   const lockTime = app.reviewLockedAt ? new Date(app.reviewLockedAt).getTime() : 0;
   const isLockedByOther = app.reviewLockedBy && app.reviewLockedBy !== currentUser.id && (now - lockTime < 10 * 60000);
@@ -2227,27 +2288,34 @@ function finalizeApplicationReviewAction(appId, fields, container) {
 
 function approveApplicationFinal(app, container) {
   const currentUser = getCurrentUser();
-  app.status = 'Approved';
+  const isSuper = currentUser.role === 'superadmin';
+  const newStatus = isSuper ? 'Final Approved' : 'Admin Approved';
+  
+  app.status = newStatus;
   app.updatedAt = new Date().toISOString();
 
   // Audit log
-  Store.addAuditLog(currentUser.id, `Application Approved Final: ${app.id}`, 'application-review', app.id);
+  Store.addAuditLog(currentUser.id, `Application Approved: ${app.id} (Status: ${newStatus})`, 'application-review', app.id);
 
   // Timeline
   app.timeline = app.timeline || [];
   app.timeline.push({
     id: `tl_${Date.now()}`,
-    action: 'Application Approved',
-    details: `Application marked as Approved by Reviewer ${currentUser.name || currentUser.username}`,
+    action: isSuper ? 'Application Approved (Final)' : 'Application Approved (Department Admin)',
+    details: `Application marked as ${newStatus} by ${currentUser.role === 'superadmin' ? 'Super Admin' : 'Reviewer'} ${currentUser.name || currentUser.username}`,
     userId: currentUser.id,
     timestamp: new Date().toISOString()
   });
 
   // Notification
-  Store.addNotification(app.userId, 'APPLICATION_APPROVED', `Congratulations! Your SRF application ${app.id} has been Approved.`, app.id);
+  if (isSuper) {
+    Store.addNotification(app.userId, 'APPLICATION_APPROVED', `Congratulations! Your SRF application ${app.id} has been Approved (Final).`, app.id);
+  } else {
+    Store.addNotification(app.userId, 'APPLICATION_APPROVED', `Your SRF application ${app.id} has been approved by the Department Admin and is pending final review by Super Admin.`, app.id);
+  }
 
   Store.scheduleSave();
-  showToast('Application approved successfully.', 'success');
+  showToast(`Application marked as ${newStatus} successfully.`, 'success');
 
   // Go back to queue dashboard
   activeWorkspaceAppId = null;

@@ -341,11 +341,11 @@ if (toggleBtn && pwdInput) {
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTH — LOGIN
 // ═══════════════════════════════════════════════════════════════════════════
-document.getElementById('login-form').addEventListener('submit', (e) => {
+document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = document.getElementById('username').value.replace(/\s+/g, '').toLowerCase();
   const password = document.getElementById('password').value;
-  const result = login(username, password);
+  const result = await login(username, password);
 
   if (result.success) {
     const loginType = document.getElementById('login-form').dataset.loginType;
@@ -1668,7 +1668,7 @@ function openCreateAdminModal(container) {
 
 function openAssignmentModal(userId, container) {
   const user = getUserById(userId);
-  const editions = getEditions();
+  const editions = getEditions().filter(e => e.status === 'published' && !e.isDeleted);
   const currentAssignments = getAssignments(userId);
 
   const backdrop = document.createElement('div');
@@ -6072,6 +6072,8 @@ function _statusClass(status) {
   const map = {
     'Draft': 'status-draft', 'Submitted': 'status-submitted',
     'Resubmitted': 'status-submitted', 'Under Review': 'status-review',
+    'Admin Approved': 'status-submitted', 'Super Admin Review': 'status-review',
+    'Final Approved': 'status-approved',
     'Approved': 'status-approved', 'Rejected': 'status-rejected',
     'Additional Documents Requested': 'status-add-docs',
     'Not Started': 'status-draft'
@@ -6908,11 +6910,15 @@ function openReassignModal(assignmentId, container) {
       <p style="color:var(--text-muted); font-size:14px; margin-bottom:15px;">
         Select a new actively participating user to assign <strong>${assignment.responsibility}</strong> to.
       </p>
-      <div class="form-group" style="margin-bottom:20px;">
+      <div class="form-group" style="margin-bottom:16px;">
         <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">Select User</label>
         <select id="reassign-user-select" class="form-input form-select" style="width:100%; height:40px;">
           ${optionsHtml}
         </select>
+      </div>
+      <div class="form-group" style="margin-bottom:20px;">
+        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">Reassignment Reason <span style="color:var(--ui-error); font-weight:bold;">*</span></label>
+        <textarea id="reassign-reason-input" class="form-input" style="width:100%; height:80px; padding:8px 12px; border-radius:6px; resize:none;" placeholder="Enter reason for reassignment (required)..."></textarea>
       </div>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
         <button class="btn btn-secondary" id="btn-cancel-reassign">Cancel</button>
@@ -6934,6 +6940,12 @@ function openReassignModal(assignmentId, container) {
       return;
     }
 
+    const reason = document.getElementById('reassign-reason-input').value.trim();
+    if (!reason) {
+      showToast('Reassignment reason is required.', 'error');
+      return;
+    }
+
     const duplicate = allAssignments.find(a => 
       a.userId === newUserId && 
       a.editionId === assignment.editionId && 
@@ -6951,7 +6963,7 @@ function openReassignModal(assignmentId, container) {
     updateAssignment(assignmentId, newUserId, getCurrentUser().id);
     
     // Log reassignment history in database
-    addReassignmentHistory(assignmentId, oldUserId, newUserId, getCurrentUser().id);
+    addReassignmentHistory(assignmentId, oldUserId, newUserId, getCurrentUser().id, reason);
 
     // Auto-create application for the new user if not already existing
     const existingApp = allApplications.find(app => app.editionId === assignment.editionId && app.userId === newUserId);
@@ -6963,7 +6975,7 @@ function openReassignModal(assignmentId, container) {
     // Notify the new and old users
     addNotification(newUserId, 'SECTION_ASSIGNED', `You have been reassigned a task: ${assignment.responsibility}`);
     addNotification(oldUserId, 'SECTION_UNASSIGNED', `You are no longer assigned to task: ${assignment.responsibility}`);
-    addAuditLog(getCurrentUser().id, `Reassigned task ${assignmentId} from ${oldUserId} to ${newUserId}`, 'user', newUserId);
+    addAuditLog(getCurrentUser().id, `Reassigned task ${assignmentId} from ${oldUserId} to ${newUserId}. Reason: ${reason}`, 'user', newUserId);
     
     showToast('Task reassigned successfully', 'success');
     closeModal();

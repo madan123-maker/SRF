@@ -2,6 +2,9 @@ import ExcelJS from 'exceljs';
 import { Application, ApplicationAnswer, FormField, User, Edition, ReformArea } from './db.js';
 
 export const exportApplicationsToExcel = async (req, res) => {
+  if (!req.user || req.user.role === 'user') {
+    return res.status(403).json({ error: 'Access denied: Only Admins and Super Admins can export data.' });
+  }
   try {
     const timestamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

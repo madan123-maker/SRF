@@ -502,18 +502,17 @@ export function renderUserDashboardEnhanced(container) {
   // Total editions in the system (dynamic, from DB)
   const totalEditions = (Store.getEditions ? Store.getEditions() : []).filter(e => !e.isDeleted && e.status === 'published').length;
 
-  // Row 1: Executive KPI Cards (6-column responsive layout)
+  const submittedTasks = apps.filter(a => ['Submitted', 'Resubmitted', 'Under Review', 'Admin Approved', 'Super Admin Review', 'Final Approved'].includes(a.status));
+
+  // Row 1: Executive KPI Cards (3-column responsive layout)
   const kpis = [
-    { label: 'Total Editions', val: totalEditions, desc: 'Published editions available.', class: 'indigo', tab: 'assigned-editions', icon: '🗂️' },
-    { label: 'Assigned Editions', val: totalAssigned, desc: 'Editions assigned to you.', class: 'blue', tab: 'assigned-editions', icon: '⚡' },
-    { label: 'Draft Applications', val: draftApps.length, desc: 'Active drafts in preparation.', class: 'orange', tab: 'drafts', icon: '📝' },
-    { label: 'Under Review', val: submittedApps.length, desc: 'Applications pending review.', class: 'purple', tab: 'submitted', icon: '⏱️' },
-    { label: 'Approved', val: approvedApps.length, desc: 'Certified submissions.', class: 'green', tab: 'approved', icon: '✓' },
-    { label: 'Rejected', val: rejectedApps.length, desc: 'Returned/rejected.', class: 'red', tab: 'rejected', icon: '✕' }
+    { label: 'Assigned Tasks', val: userAssignments.length, desc: 'Allocated reform areas / questions.', class: 'blue', tab: 'assigned-editions', icon: '⚡' },
+    { label: 'Drafts', val: draftApps.length, desc: 'Active drafts in preparation.', class: 'orange', tab: 'drafts', icon: '📝' },
+    { label: 'Submitted Tasks', val: submittedTasks.length, desc: 'Submissions pending/completed.', class: 'green', tab: 'submitted', icon: '✓' }
   ];
 
   const kpisHtml = `
-    <div class="dashboard-kpi-grid">
+    <div class="dashboard-kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
       ${kpis.map(k => `
         <div class="glass-card glass-card-enhanced status-border-${k.class}" data-tab="${k.tab}" style="padding: 16px; cursor: pointer;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -1705,23 +1704,39 @@ export function renderAdminAnalyticsDashboard(container) {
     `;
     return;
   }
-  const editions = Store.getEditions() || [];
+  const editions = (Store.getEditions() || []).filter(e => e.status === 'published' && !e.isDeleted);
   
   if (!currentAnalyticsEditionId && editions.length > 0) {
     currentAnalyticsEditionId = editions[0]?.id;
   }
   const selectedEditionId = currentAnalyticsEditionId;
-  const stats = Store.getEditionStats(selectedEditionId);
   const prod = calculateProductivityMetrics();
 
-  // Compute platform averages for selected edition (excluding Draft status)
-  const editionApps = (db.applications || []).filter(a => a.editionId === selectedEditionId && a.status !== 'Draft');
+  const isSuper = getCurrentUser().role === 'superadmin';
+  const adminOrg = getCurrentUser().organization || '';
+
+  // Get active users with department filter
+  let activeUsers = (db.users || []).filter(u => u.role === 'user' && u.active !== false);
+  if (!isSuper && adminOrg !== 'DPIIT') {
+    activeUsers = activeUsers.filter(u => u.organization === adminOrg);
+  }
+
+  // Get filtered applications (including drafts so we can draw charts accurately)
+  const allFilteredApps = (db.applications || []).filter(a => {
+    if (a.editionId !== selectedEditionId) return false;
+    if (!isSuper && adminOrg !== 'DPIIT') {
+      const applicant = (db.users || []).find(u => u.id === a.userId);
+      if (!applicant || applicant.organization !== adminOrg) return false;
+    }
+    return true;
+  });
+
+  const editionApps = allFilteredApps.filter(a => a.status !== 'Draft');
   let totalAppsCount = editionApps.length;
-  let approvedAppsCount = editionApps.filter(a => a.status === 'Approved').length;
+  let approvedAppsCount = editionApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved'].includes(a.status)).length;
   let successRate = totalAppsCount ? ((approvedAppsCount / totalAppsCount) * 100).toFixed(0) : '0';
 
-  let activeUsers = (db.users || []).filter(u => u.role === 'user');
-  const usersWithApp = activeUsers.filter(u => editionApps.some(a => a.userId === u.id));
+  const usersWithApp = activeUsers.filter(u => allFilteredApps.some(a => a.userId === u.id));
   let participationRate = activeUsers.length ? ((usersWithApp.length / activeUsers.length) * 100).toFixed(0) + '%' : '0%';
 
   // Calculate compliance data for each district for quick comparative analysis (excluding Draft status)
@@ -1791,69 +1806,57 @@ export function renderAdminAnalyticsDashboard(container) {
     </div>
 
     <!-- Core Executive Metrics -->
-    ${isSuperAdmin() ? `
-    <div class="stats-grid" style="margin-bottom:28px; display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px;">
+    ${isSuper ? `
+    <div class="stats-grid" style="margin-bottom:28px; display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--accent-purple)">${editions.length} / ${editions.filter(e => e.status === 'published').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Editions (Total / Live)</p>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--accent-blue)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status !== 'Draft').length}</h3>
+          <h3 style="font-size:26px; font-weight:800; color:var(--accent-blue)">${allFilteredApps.filter(a => a.status !== 'Draft').length}</h3>
           <p style="font-size:13px; color:var(--text-muted);">Total Submissions</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--warning)">${db.applications.filter(a => a.editionId === selectedEditionId && ['Submitted', 'Under Review', 'Resubmitted'].includes(a.status)).length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Pending Review</p>
+          <h3 style="font-size:26px; font-weight:800; color:var(--warning)">${allFilteredApps.filter(a => ['Admin Approved', 'Super Admin Review'].includes(a.status)).length}</h3>
+          <p style="font-size:13px; color:var(--text-muted);">Pending Final Review</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--success)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status === 'Approved').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Approved Apps</p>
+          <h3 style="font-size:26px; font-weight:800; color:var(--success)">${allFilteredApps.filter(a => a.status === 'Final Approved').length}</h3>
+          <p style="font-size:13px; color:var(--text-muted);">Approved (Final)</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--danger)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status === 'Rejected').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Rejected Apps</p>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--accent-purple)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status === 'Additional Documents Requested').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Docs Requested</p>
+          <h3 style="font-size:26px; font-weight:800; color:var(--danger)">${allFilteredApps.filter(a => a.status === 'Rejected').length}</h3>
+          <p style="font-size:13px; color:var(--text-muted);">Rejected</p>
         </div>
       </div>
     </div>
     ` : `
-    <div class="stats-grid" style="margin-bottom:28px; display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px;">
+    <div class="stats-grid" style="margin-bottom:28px; display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--accent-blue)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status !== 'Draft').length}</h3>
+          <h3 style="font-size:26px; font-weight:800; color:var(--accent-blue)">${allFilteredApps.filter(a => a.status !== 'Draft').length}</h3>
           <p style="font-size:13px; color:var(--text-muted);">Total Submissions</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--warning)">${db.applications.filter(a => a.editionId === selectedEditionId && ['Submitted', 'Under Review', 'Resubmitted'].includes(a.status)).length}</h3>
+          <h3 style="font-size:26px; font-weight:800; color:var(--warning)">${allFilteredApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)).length}</h3>
           <p style="font-size:13px; color:var(--text-muted);">Pending Review</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--success)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status === 'Approved').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Approved Apps</p>
+          <h3 style="font-size:26px; font-weight:800; color:var(--success)">${allFilteredApps.filter(a => ['Admin Approved', 'Final Approved'].includes(a.status)).length}</h3>
+          <p style="font-size:13px; color:var(--text-muted);">Approved</p>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-info">
-          <h3 style="font-size:26px; font-weight:800; color:var(--danger)">${db.applications.filter(a => a.editionId === selectedEditionId && a.status === 'Rejected').length}</h3>
-          <p style="font-size:13px; color:var(--text-muted);">Rejected Apps</p>
+          <h3 style="font-size:26px; font-weight:800; color:var(--danger)">${allFilteredApps.filter(a => a.status === 'Rejected').length}</h3>
+          <p style="font-size:13px; color:var(--text-muted);">Rejected</p>
         </div>
       </div>
     </div>
@@ -1978,10 +1981,10 @@ export function renderAdminAnalyticsDashboard(container) {
           labels: ['Approved', 'Pending Review', 'In Progress', 'Rejected'],
           datasets: [{
             data: [
-              stats.approved,
-              stats.submitted + stats.underReview,
-              stats.draft,
-              stats.rejected
+              allFilteredApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved'].includes(a.status)).length,
+              allFilteredApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Super Admin Review'].includes(a.status)).length,
+              allFilteredApps.filter(a => a.status === 'Draft' || a.status === 'Additional Documents Requested').length,
+              allFilteredApps.filter(a => a.status === 'Rejected').length
             ],
             backgroundColor: ['#10b981', '#cbd5e1', '#f59e0b', '#ef4444'],
             borderWidth: 1
@@ -2049,9 +2052,9 @@ function renderAdminTabbedTable(tableContainer, selectedEditionId, isSuper, dash
   if (!db) return;
 
   const tabs = isSuper ? [
-    { id: 'submitted', label: 'Submitted Applications' },
-    { id: 'underReview', label: 'Under Review' },
-    { id: 'approved', label: 'Approved' },
+    { id: 'submitted', label: 'Submitted / Under Review' },
+    { id: 'pendingFinal', label: 'Pending Final Review' },
+    { id: 'approved', label: 'Final Approved' },
     { id: 'rejected', label: 'Rejected' }
   ] : [
     { id: 'submitted', label: 'Submitted Queue' },
@@ -2059,7 +2062,7 @@ function renderAdminTabbedTable(tableContainer, selectedEditionId, isSuper, dash
   ];
 
   let activeTab = isSuper ? activeSaTab : activeAdTab;
-  if (isSuper && (activeTab === 'notStarted' || activeTab === 'draft')) {
+  if (isSuper && (activeTab === 'notStarted' || activeTab === 'draft' || activeTab === 'underReview')) {
     activeTab = 'submitted';
     activeSaTab = 'submitted';
   } else if (!isSuper && activeTab === 'draft') {
@@ -2067,13 +2070,28 @@ function renderAdminTabbedTable(tableContainer, selectedEditionId, isSuper, dash
     activeAdTab = 'submitted';
   }
 
-  const editionApps = (db.applications || []).filter(a => a.editionId === selectedEditionId);
+  const adminOrg = getCurrentUser().organization || '';
+
+  const editionApps = (db.applications || []).filter(a => {
+    if (a.editionId !== selectedEditionId) return false;
+    if (!isSuper && adminOrg !== 'DPIIT') {
+      const applicant = (db.users || []).find(u => u.id === a.userId);
+      if (!applicant || applicant.organization !== adminOrg) return false;
+    }
+    return true;
+  });
 
   // Compute Not Started
   const editionAssignments = (db.assignments || []).filter(a => a.editionId === selectedEditionId);
   const assignedUserIds = [...new Set(editionAssignments.map(a => a.userId))];
   const assignedUsers = (db.users || []).filter(u => assignedUserIds.includes(u.id) && u.role === 'user');
-  const notStartedUsers = assignedUsers.filter(u => {
+  
+  let filteredAssignedUsers = assignedUsers;
+  if (!isSuper && adminOrg !== 'DPIIT') {
+    filteredAssignedUsers = assignedUsers.filter(u => u.organization === adminOrg);
+  }
+
+  const notStartedUsers = filteredAssignedUsers.filter(u => {
     const hasApp = (db.applications || []).some(app => app.editionId === selectedEditionId && app.userId === u.id);
     return !hasApp;
   });
@@ -2129,14 +2147,12 @@ function renderAdminTabbedTable(tableContainer, selectedEditionId, isSuper, dash
     }
   } else {
     const appsToRender = isSuper
-      ? (activeTab === 'draft' ? editionApps.filter(a => a.status === 'Draft')
-         : activeTab === 'submitted' ? editionApps.filter(a => a.status === 'Submitted' || a.status === 'Resubmitted')
-         : activeTab === 'underReview' ? editionApps.filter(a => a.status === 'Under Review')
-         : activeTab === 'approved' ? editionApps.filter(a => a.status === 'Approved')
+      ? (activeTab === 'submitted' ? editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status))
+         : activeTab === 'pendingFinal' ? editionApps.filter(a => ['Admin Approved', 'Super Admin Review'].includes(a.status))
+         : activeTab === 'approved' ? editionApps.filter(a => ['Final Approved', 'Approved'].includes(a.status))
          : editionApps.filter(a => a.status === 'Rejected'))
-      : (activeTab === 'draft' ? editionApps.filter(a => a.status === 'Draft')
-         : activeTab === 'submitted' ? editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted'].includes(a.status))
-         : editionApps.filter(a => ['Approved', 'Rejected', 'Additional Documents Requested'].includes(a.status)));
+      : (activeTab === 'submitted' ? editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status))
+         : editionApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved', 'Rejected'].includes(a.status)));
 
     if (appsToRender.length === 0) {
       tableHtml = `

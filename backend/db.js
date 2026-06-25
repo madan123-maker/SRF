@@ -233,6 +233,7 @@ const reassignmentHistorySchema = new mongoose.Schema({
   assignmentId: String,
   oldUserId: String,
   newUserId: String,
+  reason: String,
   reassignedBy: String,
   reassignedAt: String
 }, { minimize: false });

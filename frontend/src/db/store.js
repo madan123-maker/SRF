@@ -19,7 +19,19 @@ const _saveQueue = [];
 // ═══════════════════════════════════════════════════════════════
 export async function initStore() {
   try {
-    const res = await fetch('/api/db');
+    const headers = {};
+    try {
+      const sessionRaw = sessionStorage.getItem('srf_session_v2');
+      if (sessionRaw) {
+        const sess = JSON.parse(sessionRaw);
+        if (sess && sess.id && sess.role) {
+          headers['X-User-Id'] = sess.id;
+          headers['X-User-Role'] = sess.role;
+        }
+      }
+    } catch (e) {}
+
+    const res = await fetch('/api/db', { headers });
     if (res.ok) {
       _db = await res.json();
       console.log('[Store] Database loaded from MongoDB backend API.');
@@ -607,48 +619,10 @@ export function updateEdition(id, data) {
         addAuditLog(currentUserId, `Published edition: ${_db.editions[idx].name}`, 'edition', id);
         
         const activeUsers = (_db.users || []).filter(u => u.role === 'user' && u.active !== false);
-        const reformAreasList = (_db.reformAreas || []).filter(ra => ra.editionId === id);
         
-        let assignmentsCreatedCount = 0;
         let appsCreatedCount = 0;
-        let failedAssignments = [];
 
         activeUsers.forEach(user => {
-          reformAreasList.forEach(ra => {
-            // Check if already exists
-            const exists = (_db.assignments || []).some(x => 
-              x.userId === user.id &&
-              x.editionId === id &&
-              x.type === 'Reform Area' &&
-              (x.sectionId === ra.id || x.reformAreaId === ra.id)
-            );
-            
-            if (!exists) {
-              const safeId = 'assign_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-              const a = {
-                id: safeId,
-                userId: user.id,
-                editionId: id,
-                type: 'Reform Area',
-                reformAreaId: ra.id,
-                reformAreaName: ra.name,
-                sectionId: ra.id,
-                responsibility: `Reform Area: ${ra.name}`,
-                assignedBy: currentUserId,
-                assignedAt: new Date().toISOString()
-              };
-              _db.assignments.push(a);
-              
-              // Verify assignment exists after creation
-              const verified = (_db.assignments || []).find(x => x.id === safeId);
-              if (!verified) {
-                failedAssignments.push({ userId: user.id, reformAreaId: ra.id });
-              } else {
-                assignmentsCreatedCount++;
-              }
-            }
-          });
-          
           // Create application placeholder draft if one does not already exist
           const existingApp = (_db.applications || []).find(a => a.userId === user.id && a.editionId === id && a.status !== 'Rejected');
           if (!existingApp) {
@@ -693,16 +667,8 @@ export function updateEdition(id, data) {
             _db.notifications.unshift(note);
           }
         });
-
-        if (failedAssignments.length > 0) {
-          console.error(`[Publish Error] ${failedAssignments.length} assignments failed verification.`);
-          addAuditLog(currentUserId, `[WARN] ${failedAssignments.length} assignments failed verification on publish.`, 'edition', id);
-          try {
-            window.lastAdminWarning = `Warning: ${failedAssignments.length} assignments failed verification on publish. Check audit logs.`;
-          } catch(e) {}
-        }
         
-        addAuditLog('system', `Published Edition Setup Complete: Created ${assignmentsCreatedCount} assignments and ${appsCreatedCount} application drafts.`, 'edition', id);
+        addAuditLog('system', `Published Edition Setup Complete: Created ${appsCreatedCount} application drafts.`, 'edition', id);
       } else {
         addAuditLog(currentUserId, `Unpublished edition: ${_db.editions[idx].name}`, 'edition', id);
       }
@@ -1344,11 +1310,7 @@ export function isFieldAssignedToUser(f, userId) {
 
   if (isAssignedInDb || isAssignedInSchema) return true;
 
-  // 3. Check if strict mode is active for this user
-  const userEdAssignments = (_db.assignments || []).filter(a => a.userId === userId && a.editionId === f.editionId);
-  if (userEdAssignments.length > 0) return false;
-
-  return true;
+  return false;
 }
 
 export function isSectionAssignedToUser(sec, userId) {
@@ -1376,16 +1338,6 @@ export function isSectionAssignedToUser(sec, userId) {
       return true;
     }
   }
-
-  // 4. Check if strict mode is active for this user
-  const userEdAssignments = (_db.assignments || []).filter(a => a.userId === userId && a.editionId === sec.editionId);
-  if (userEdAssignments.length > 0) {
-    return false;
-  }
-
-  // 5. Default fallback
-  if (!sec.assignment || sec.assignment.type === 'all') return true;
-  if (sec.assignment.category && user.category === sec.assignment.category) return true;
 
   return false;
 }
@@ -2110,13 +2062,14 @@ export function removeAssignment(id) {
   _save(); 
 }
 
-export function addReassignmentHistory(assignmentId, oldUserId, newUserId, reassignedBy) {
+export function addReassignmentHistory(assignmentId, oldUserId, newUserId, reassignedBy, reason = '') {
   const assignment = (_db.assignments || []).find(x => x.id === assignmentId);
   const history = {
     id: 'reassign_hist_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
     assignmentId,
     oldUserId,
     newUserId,
+    reason,
     reassignedBy,
     reassignedAt: new Date().toISOString(),
     responsibility: assignment ? assignment.responsibility : 'Unknown Task',
@@ -2125,7 +2078,7 @@ export function addReassignmentHistory(assignmentId, oldUserId, newUserId, reass
   };
   _db.reassignmentHistory = _db.reassignmentHistory || [];
   _db.reassignmentHistory.push(history);
-  addAuditLog(reassignedBy, `Reassigned task from ${oldUserId} to ${newUserId}`, 'Assignment', assignmentId);
+  addAuditLog(reassignedBy, `Reassigned task from ${oldUserId} to ${newUserId}. Reason: ${reason}`, 'Assignment', assignmentId);
   _save();
   return history;
 }
@@ -2959,37 +2912,9 @@ export function repairDataIntegrity() {
   const activeUsers = (_db.users || []).filter(u => u.role === 'user' && u.active !== false);
   const publishedEditions = (_db.editions || []).filter(e => e.status === 'published' && !e.isDeleted);
 
-  // 1. Repair published editions missing assignments or applications
+  // 1. Repair published editions missing applications
   publishedEditions.forEach(ed => {
-    const reformAreasList = (_db.reformAreas || []).filter(ra => ra.editionId === ed.id);
-    
     activeUsers.forEach(user => {
-      // Validate assignments
-      reformAreasList.forEach(ra => {
-        const exists = (_db.assignments || []).some(x => 
-          x.userId === user.id &&
-          x.editionId === ed.id &&
-          x.type === 'Reform Area' &&
-          (x.sectionId === ra.id || x.reformAreaId === ra.id)
-        );
-        if (!exists) {
-          const safeId = 'assign_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-          _db.assignments.push({
-            id: safeId,
-            userId: user.id,
-            editionId: ed.id,
-            type: 'Reform Area',
-            reformAreaId: ra.id,
-            reformAreaName: ra.name,
-            sectionId: ra.id,
-            responsibility: `Reform Area: ${ra.name}`,
-            assignedBy: 'system_repair',
-            assignedAt: new Date().toISOString()
-          });
-          stats.assignmentsRepaired++;
-        }
-      });
-
       // Validate application draft placeholder
       const existingApp = (_db.applications || []).find(a => a.userId === user.id && a.editionId === ed.id && a.status !== 'Rejected');
       if (!existingApp) {

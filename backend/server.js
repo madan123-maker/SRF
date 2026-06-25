@@ -43,6 +43,45 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+async function isFieldAssignedToUserBackend(field, user, context = {}) {
+  if (!user) return false;
+
+  let assignments = context.assignments;
+  if (!assignments) {
+    assignments = await Assignment.find({ userId: user.id }).lean();
+  }
+
+  const isAssignedInDb = assignments.some(a => {
+    if (a.editionId !== field.editionId) return false;
+    if ((!a.type || a.type === 'Reform Area') && (a.sectionId === field.reformAreaId || a.reformAreaId === field.reformAreaId)) return true;
+    if (a.type === 'Action Point' && a.actionPointId === field.actionPointId) return true;
+    if (a.type === 'Question' && (a.questionId === field.id || a.fieldId === field.id)) return true;
+    return false;
+  });
+  if (isAssignedInDb) return true;
+
+  if (field.assignment) {
+    const ass = field.assignment;
+    if (ass.type === 'custom' && ass.users && (ass.users.includes(user.username) || ass.users.includes(user.id))) {
+      return true;
+    }
+  }
+
+  let reformAreas = context.reformAreas;
+  if (!reformAreas) {
+    reformAreas = await ReformArea.find({ editionId: field.editionId }).lean();
+  }
+  const parentRA = reformAreas.find(s => s.id === field.reformAreaId);
+  if (parentRA && parentRA.assignment) {
+    const raAss = parentRA.assignment;
+    if (raAss.type === 'custom' && raAss.users && (raAss.users.includes(user.username) || raAss.users.includes(user.id))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DATABASE SEEDING
 // ═══════════════════════════════════════════════════════════════
@@ -230,14 +269,154 @@ async function verifySessionOptional(req, res, next) {
 // GET complete database state
 app.get('/api/export/excel', verifySession, exportApplicationsToExcel);
 
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const cleanUsername = String(username).replace(/\s+/g, '').toLowerCase();
+    const user = await User.findOne({ username: cleanUsername }).lean();
+    if (!user || user.password !== password || user.active === false) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    const sanitizedUser = { ...user };
+    delete sanitizedUser.password;
+    res.json({ success: true, user: sanitizedUser });
+  } catch (err) {
+    console.error('[API Login Error]:', err);
+    res.status(500).json({ error: 'Server error during authentication' });
+  }
+});
+
 app.get('/api/db', verifySessionOptional, async (req, res) => {
   try {
+    let settingsDoc = await Settings.findOne().lean();
+    if (!settingsDoc) {
+      settingsDoc = {
+        platformName: 'SRF Management Platform',
+        orgName: 'DPIIT',
+        logoText: 'SRF Portal',
+        autoSaveDraftInterval: 30000
+      };
+    }
+
+    if (!req.user) {
+      // Unauthenticated users receive only settings
+      return res.json({
+        version: 3,
+        editions: [],
+        reformAreas: [],
+        formFields: [],
+        applications: [],
+        applicationAnswers: [],
+        users: [],
+        notifications: [],
+        assignments: [],
+        auditLogs: [],
+        schemaVersions: [],
+        guidelines: [],
+        documentRules: [],
+        departments: [],
+        messages: [],
+        recycleBin: [],
+        reassignmentHistory: [],
+        settings: settingsDoc
+      });
+    }
+
+    if (req.user.role === 'user') {
+      // Restrict users to their assigned editions, reform areas, questions, own data
+      const assignments = await Assignment.find({ userId: req.user.id }).lean();
+      const assignedEditionIds = [...new Set(assignments.map(a => a.editionId))];
+      
+      const editions = await Edition.find({ id: { $in: assignedEditionIds }, status: 'published', isDeleted: false }).lean();
+      const activeEdIds = editions.map(e => e.id);
+      
+      const allReformAreas = await ReformArea.find({ editionId: { $in: activeEdIds } }).lean();
+      const allFields = await FormField.find({ editionId: { $in: activeEdIds } }).lean();
+
+      function isFieldAssigned(f) {
+        const isAssignedInDb = assignments.some(a => {
+          if (a.editionId !== f.editionId) return false;
+          if ((!a.type || a.type === 'Reform Area') && (a.sectionId === f.reformAreaId || a.reformAreaId === f.reformAreaId)) return true;
+          if (a.type === 'Action Point' && a.actionPointId === f.actionPointId) return true;
+          if (a.type === 'Question' && (a.questionId === f.id || a.fieldId === f.id)) return true;
+          return false;
+        });
+        if (isAssignedInDb) return true;
+
+        if (f.assignment && f.assignment.type === 'custom' && f.assignment.users && (f.assignment.users.includes(req.user.username) || f.assignment.users.includes(req.user.id))) return true;
+
+        const parentRA = allReformAreas.find(s => s.id === f.reformAreaId && s.editionId === f.editionId);
+        if (parentRA && parentRA.assignment && parentRA.assignment.type === 'custom' && parentRA.assignment.users && (parentRA.assignment.users.includes(req.user.username) || parentRA.assignment.users.includes(req.user.id))) return true;
+
+        return false;
+      }
+
+      const formFields = allFields.filter(isFieldAssigned);
+      const assignedFieldRAIds = formFields.map(f => f.reformAreaId);
+      const assignedRAIds = assignments.map(a => a.reformAreaId || a.sectionId);
+      const allAssignedRAIds = [...new Set([...assignedFieldRAIds, ...assignedRAIds])];
+
+      const reformAreas = allReformAreas.filter(ra => {
+        if (allAssignedRAIds.includes(ra.id)) return true;
+        if (ra.assignment && ra.assignment.type === 'custom' && ra.assignment.users && (ra.assignment.users.includes(req.user.username) || ra.assignment.users.includes(req.user.id))) return true;
+        return false;
+      });
+
+      const applications = await Application.find({ userId: req.user.id, editionId: { $in: activeEdIds } }).lean();
+      const appIds = applications.map(a => a.id);
+      const applicationAnswers = await ApplicationAnswer.find({ applicationId: { $in: appIds } }).lean();
+      
+      const notifications = await Notification.find({ userId: req.user.id }).lean();
+      const auditLogs = await AuditLog.find({ userId: req.user.id }).lean();
+      const schemaVersions = await SchemaVersion.find({ editionId: { $in: activeEdIds } }).lean();
+      const guidelines = await Guideline.find({ editionId: { $in: activeEdIds } }).lean();
+      const documentRules = await DocumentRule.find({ editionId: { $in: activeEdIds } }).lean();
+      const departments = await Department.find().lean();
+      const messages = await Message.find({ $or: [{ senderId: req.user.id }, { receiverId: req.user.id }] }).lean();
+
+      const sanitizedProfile = { ...req.user };
+      delete sanitizedProfile.password;
+
+      return res.json({
+        version: 3,
+        editions,
+        reformAreas,
+        formFields,
+        applications,
+        applicationAnswers,
+        users: [sanitizedProfile],
+        notifications,
+        assignments,
+        auditLogs,
+        schemaVersions,
+        guidelines,
+        documentRules,
+        departments,
+        messages,
+        recycleBin: [],
+        reassignmentHistory: [],
+        settings: settingsDoc
+      });
+    }
+
+    // Admins, Reviewers, and Super Admins get all data, but passwords must be sanitized
     const editions = await Edition.find().lean();
     const reformAreas = await ReformArea.find().lean();
     const formFields = await FormField.find().lean();
     const applications = await Application.find().lean();
     const applicationAnswers = await ApplicationAnswer.find().lean();
-    const users = await User.find().lean();
+    
+    const usersRaw = await User.find().lean();
+    const users = usersRaw.map(u => {
+      const sanitized = { ...u };
+      delete sanitized.password;
+      return sanitized;
+    });
+
     const notifications = await Notification.find().lean();
     const assignments = await Assignment.find().lean();
     const auditLogs = await AuditLog.find().lean();
@@ -248,17 +427,7 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
     const messages = await Message.find().lean();
     const recycleBin = await RecycleBin.find().lean();
     const reassignmentHistory = await ReassignmentHistory.find().lean();
-    
-    let settingsDoc = await Settings.findOne().lean();
-    if (!settingsDoc) {
-      settingsDoc = {
-        platformName: 'SRF Management Platform',
-        orgName: 'DPIIT',
-        logoText: 'SRF Portal',
-        autoSaveDraftInterval: 30000
-      };
-    }
-    
+
     res.json({
       version: 3,
       editions,
@@ -309,9 +478,28 @@ app.get('/api/files/:appId/:fieldId', verifySession, async (req, res) => {
     const appRecord = await Application.findOne({ id: appId }).lean();
     if (!appRecord) return res.status(404).json({ error: 'Application not found' });
 
-    if (appRecord.status === 'Draft' || req.user.role === 'user') {
+    // Enforce role security
+    if (req.user.role === 'user') {
       if (req.user.id !== appRecord.userId) {
         return res.status(403).json({ error: 'Access denied: You do not own this application' });
+      }
+      const field = await FormField.findOne({ id: fieldId }).lean();
+      const userAssignments = await Assignment.find({ userId: req.user.id }).lean();
+      if (!field || !await isFieldAssignedToUserBackend(field, req.user, { assignments: userAssignments })) {
+        return res.status(403).json({ error: 'Access denied: Question is not assigned to you' });
+      }
+    } else if (req.user.role === 'admin' || req.user.role === 'reviewer') {
+      if (appRecord.status === 'Draft') {
+        return res.status(403).json({ error: 'Access denied: Draft application' });
+      }
+      const applicant = await User.findOne({ id: appRecord.userId }).lean();
+      if (req.user.organization !== 'DPIIT' && applicant && applicant.organization !== req.user.organization) {
+        return res.status(403).json({ error: 'Access denied: Application belongs to another department' });
+      }
+    } else if (req.user.role === 'superadmin') {
+      const allowed = ['Admin Approved', 'Super Admin Review', 'Final Approved', 'Rejected'];
+      if (!allowed.includes(appRecord.status)) {
+        return res.status(403).json({ error: 'Access denied: Application is not in Super Admin review stage' });
       }
     }
 
@@ -331,10 +519,20 @@ app.post('/api/files/:appId/:fieldId', verifySession, async (req, res) => {
     const appRecord = await Application.findOne({ id: appId }).lean();
     if (!appRecord) return res.status(404).json({ error: 'Application not found' });
 
-    if (appRecord.status === 'Draft' || req.user.role === 'user') {
-      if (req.user.id !== appRecord.userId) {
-        return res.status(403).json({ error: 'Access denied: You do not own this application' });
-      }
+    // Only owner user can upload files
+    if (req.user.role !== 'user' || req.user.id !== appRecord.userId) {
+      return res.status(403).json({ error: 'Access denied: Only application owner can upload files' });
+    }
+
+    // Block changes if final approved
+    if (appRecord.status === 'Final Approved') {
+      return res.status(403).json({ error: 'Access denied: Application is locked' });
+    }
+
+    const field = await FormField.findOne({ id: fieldId }).lean();
+    const userAssignments = await Assignment.find({ userId: req.user.id }).lean();
+    if (!field || !await isFieldAssignedToUserBackend(field, req.user, { assignments: userAssignments })) {
+      return res.status(403).json({ error: 'Access denied: Question is not assigned to you' });
     }
 
     const { files } = req.body;
@@ -415,7 +613,7 @@ app.get('/api/download-file/:appId/:fieldId/:docId', async (req, res) => {
 });
 
 // POST update complete database state
-app.post('/api/db', async (req, res) => {
+app.post('/api/db', verifySession, async (req, res) => {
   const payload = req.body;
   if (!payload) {
     return res.status(400).json({ error: 'No database state payload provided' });
@@ -450,22 +648,19 @@ app.post('/api/db', async (req, res) => {
     console.log('[API] Synchronizing database state with MongoDB...');
     const options = useTransaction ? { session } : {};
 
-    // Deduplicate applications in payload before syncing
+    // Deduplicate applications in payload before validation/syncing
     if (payload.applications && payload.applications.length > 0) {
       const keptApps = [];
       const deletedAppIds = [];
       const groups = {};
 
       for (const app of payload.applications) {
-        // Find owner user
         const user = payload.users?.find(u => u.id === app.userId) || 
                      await User.findOne({ id: app.userId }, null, options).lean();
         
         app.state = user?.state || '';
         app.organization = user?.organization || '';
 
-        // If user role is user, group by state (or org if state is empty)
-        // For other roles, group by userId
         const isUserRole = user?.role === 'user';
         const key = isUserRole
           ? (app.state 
@@ -484,7 +679,6 @@ app.post('/api/db', async (req, res) => {
         if (apps.length === 1) {
           keptApps.push(apps[0]);
         } else {
-          // Keep only one application per key
           const statusPriority = {
             'Approved': 7,
             'Under Review': 6,
@@ -504,7 +698,7 @@ app.post('/api/db', async (req, res) => {
 
           keptApps.push(apps[0]);
           apps.slice(1).forEach(deletedApp => {
-            console.log(`[Backend Sync] DELETING DUPLICATE APP: ${deletedApp.id} (Status: ${deletedApp.status}, State: ${deletedApp.state}). Kept: ${apps[0].id} (Status: ${apps[0].status}, State: ${apps[0].state})`);
+            console.log(`[Backend Sync] DELETING DUPLICATE APP: ${deletedApp.id}. Kept: ${apps[0].id}`);
             deletedAppIds.push(deletedApp.id);
           });
         }
@@ -512,17 +706,15 @@ app.post('/api/db', async (req, res) => {
 
       payload.applications = keptApps;
       if (deletedAppIds.length > 0) {
-        console.log(`[Backend Sync] Deduplicated applications. Removing ${deletedAppIds.length} duplicate applications from payload.`);
         if (payload.applicationAnswers) {
           payload.applicationAnswers = payload.applicationAnswers.filter(ans => !deletedAppIds.includes(ans.applicationId));
         }
-        // Delete records from database to ensure no leftover trace
         await Application.deleteMany({ id: { $in: deletedAppIds } }, options);
         await ApplicationAnswer.deleteMany({ applicationId: { $in: deletedAppIds } }, options);
       }
     }
 
-    // SANITIZE formFields TO PREVENT CACHE INFECTION FROM OLD LOCALSTORAGE
+    // SANITIZE formFields TO PREVENT CACHE INFECTION
     if (payload.formFields) {
       const arrowText = [
         "Government orders / notifications / circulars issued by other departments for startup support",
@@ -557,75 +749,130 @@ app.post('/api/db', async (req, res) => {
       });
     }
 
-    // Aligned assignment helper function
-    function isFieldAssignedToUserBackend(f, user, payload) {
-      if (!user) return false;
-
-      // 1. Check if assigned via database assignments
-      const editionAssignments = (payload.assignments || []).filter(a => a.userId === user.id && a.editionId === f.editionId);
-      const isAssignedInDb = editionAssignments.some(a => {
-        if ((!a.type || a.type === 'Reform Area') && (a.sectionId === f.reformAreaId || a.reformAreaId === f.reformAreaId)) return true;
-        if (a.type === 'Action Point' && a.actionPointId === f.actionPointId) return true;
-        if (a.type === 'Question' && (a.questionId === f.id || a.fieldId === f.id)) return true;
-        return false;
-      });
-
-      // 2. Check if assigned via schema mappings
-      let isAssignedInSchema = false;
-      if (f.assignment) {
-        const ass = f.assignment;
-        if (ass.type === 'custom' && ass.users && (ass.users.includes(user.username) || ass.users.includes(user.id))) {
-          isAssignedInSchema = true;
-        }
-      }
-      const parentRA = (payload.reformAreas || []).find(s => s.id === f.reformAreaId && s.editionId === f.editionId);
-      if (parentRA && parentRA.assignment) {
-        const raAss = parentRA.assignment;
-        if (raAss.type === 'custom' && raAss.users && (raAss.users.includes(user.username) || raAss.users.includes(user.id))) {
-          isAssignedInSchema = true;
-        }
-      }
-
-      if (isAssignedInDb || isAssignedInSchema) return true;
-
-      // 3. Check if strict mode is active for this user
-      const userEdAssignments = (payload.assignments || []).filter(a => a.userId === user.id && a.editionId === f.editionId);
-      if (userEdAssignments.length > 0) return false;
-
-      return true;
-    }
-
-    // Backend validation for question assignments
-    if (payload.applicationAnswers) {
-      for (const ans of payload.applicationAnswers) {
-        // Find the application
-        const app = payload.applications?.find(a => a.id === ans.applicationId) || 
-                    await Application.findOne({ id: ans.applicationId }, null, options).lean();
-        if (!app) continue;
-        
-        // Find the form field (question)
-        const field = payload.formFields?.find(f => f.id === ans.fieldId) ||
-                      await FormField.findOne({ id: ans.fieldId }, null, options).lean();
-        if (!field) continue;
-        
-        // Find the user
-        const user = payload.users?.find(u => u.id === app.userId) ||
-                     await User.findOne({ id: app.userId }, null, options).lean();
-        if (!user) continue;
-        
-        // Check aligned assignment
-        if (!isFieldAssignedToUserBackend(field, user, payload)) {
-          console.warn(`[API Validation Block] User "${user.username}" attempted to submit answer for unassigned field "${field.id}"`);
-          if (useTransaction) {
-            await session.abortTransaction();
-            session.endSession();
+    // Role-based write authorization check
+    if (req.user.role === 'user') {
+      // 1. Validate application updates belong to user
+      if (payload.applications) {
+        for (const app of payload.applications) {
+          if (app.userId !== req.user.id) {
+            if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+            return res.status(403).json({ error: 'Access denied: Cannot modify other users applications' });
           }
-          return res.status(403).json({ error: `Question ${field.num || field.id} is not assigned to this user` });
         }
       }
+
+      // 2. Validate answers and check alignment
+      if (payload.applicationAnswers) {
+        for (const ans of payload.applicationAnswers) {
+          const app = payload.applications?.find(a => a.id === ans.applicationId) || 
+                      await Application.findOne({ id: ans.applicationId }, null, options).lean();
+          if (!app) continue;
+          if (app.userId !== req.user.id) {
+            if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+            return res.status(403).json({ error: 'Access denied: Cannot modify answers for other applications' });
+          }
+
+          const field = payload.formFields?.find(f => f.id === ans.fieldId) ||
+                        await FormField.findOne({ id: ans.fieldId }, null, options).lean();
+          if (!field) continue;
+
+          if (!await isFieldAssignedToUserBackend(field, req.user, payload)) {
+            console.warn(`[API Validation Block] User "${req.user.username}" attempted to submit answer for unassigned field "${field.id}"`);
+            if (useTransaction) {
+              await session.abortTransaction();
+              session.endSession();
+            }
+            return res.status(403).json({ error: `Question ${field.num || field.id} is not assigned to this user` });
+          }
+        }
+      }
+
+      // Sync user applications (insert/update only)
+      if (payload.applications) {
+        for (const app of payload.applications) {
+          const query = { id: app.id };
+          const updateObj = { ...app };
+          delete updateObj._id;
+          await Application.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
+        }
+      }
+
+      // Sync user answers (insert/update, and delete missing ones only for this user's applications)
+      if (payload.applicationAnswers) {
+        const payloadAnsIds = payload.applicationAnswers.map(ans => ans.id);
+        const userApps = await Application.find({ userId: req.user.id }, null, options).lean();
+        const userAppIds = userApps.map(a => a.id);
+        if (payload.applications) {
+          payload.applications.forEach(a => { if (!userAppIds.includes(a.id)) userAppIds.push(a.id); });
+        }
+
+        for (let ans of payload.applicationAnswers) {
+          const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
+          if (existingAns && existingAns.files && existingAns.files.length > 0) {
+            ans.files = ans.files || [];
+            ans.files = ans.files.map(f => {
+              const existingFile = existingAns.files.find(ef => ef.docId === f.docId);
+              if (existingFile && existingFile.dataUrl && !f.dataUrl) {
+                f.dataUrl = existingFile.dataUrl;
+              }
+              return f;
+            });
+          }
+        }
+
+        for (const ans of payload.applicationAnswers) {
+          const query = { id: ans.id };
+          const updateObj = { ...ans };
+          delete updateObj._id;
+          await ApplicationAnswer.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
+        }
+
+        await ApplicationAnswer.deleteMany({
+          applicationId: { $in: userAppIds },
+          id: { $nin: payloadAnsIds }
+        }, options);
+      }
+
+      // Sync user messages
+      if (payload.messages) {
+        for (const msg of payload.messages) {
+          if (msg.senderId !== req.user.id && msg.receiverId !== req.user.id) {
+            if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+            return res.status(403).json({ error: 'Access denied: Cannot write messages for other users' });
+          }
+          const query = { id: msg.id };
+          const updateObj = { ...msg };
+          delete updateObj._id;
+          await Message.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, ...options });
+        }
+      }
+
+      if (payload.notifications) {
+        // Users can dismiss their own notifications
+        for (const note of payload.notifications) {
+          if (note.userId === req.user.id) {
+            const query = { id: note.id };
+            const updateObj = { ...note };
+            delete updateObj._id;
+            await Notification.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, ...options });
+          }
+        }
+      }
+
+      if (useTransaction) {
+        await session.commitTransaction();
+        session.endSession();
+      }
+
+      console.log(`[API] User ${req.user.username} synced data successfully.`);
+      return res.json({
+        success: true,
+        applications: payload.applications,
+        applicationAnswers: payload.applicationAnswers
+      });
     }
 
-    // Backend validation for question score limit
+    // Backend validation for question score limit (Admins & Reviewers)
     if (payload.applicationAnswers) {
       for (const ans of payload.applicationAnswers) {
         if (ans.questionStatus === 'Approved' && ans.questionScore > 0) {
@@ -659,7 +906,6 @@ app.post('/api/db', async (req, res) => {
           }
         }
         
-        // Allow initial seed logic to bypass if no existing users
         if (existingUsers.length > 0 && !isAuthorizedAdminReq) {
           console.warn(`[API Validation Block] Non-admin/non-superadmin attempted to create ${newUsers.length} users.`);
           if (useTransaction) {
@@ -669,7 +915,6 @@ app.post('/api/db', async (req, res) => {
           return res.status(403).json({ error: 'Only Super Admin or Admin can register users.' });
         }
 
-        // Send welcome email to newly created users/admins
         for (const user of newUsers) {
           try {
             await emailService.sendWelcomeEmail(user.email, user.username, user.password, user.role);
@@ -680,44 +925,92 @@ app.post('/api/db', async (req, res) => {
       }
     }
     
-    // Sync all collections
-    await syncCollection(User, payload.users, 'id', options);
-    await syncCollection(Edition, payload.editions, 'id', options);
-    await syncCollection(ReformArea, payload.reformAreas, 'id', options);
-    await syncCollection(FormField, payload.formFields, 'id', options);
-    await syncCollection(Application, payload.applications, 'id', options);
-    if (payload.applicationAnswers) {
-      for (let ans of payload.applicationAnswers) {
-        const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
-        if (existingAns && existingAns.files && existingAns.files.length > 0) {
-          ans.files = ans.files || [];
-          ans.files = ans.files.map(f => {
-            const existingFile = existingAns.files.find(ef => ef.docId === f.docId);
-            if (existingFile && existingFile.dataUrl && !f.dataUrl) {
-              f.dataUrl = existingFile.dataUrl;
-            }
-            return f;
-          });
+    // Sync users list while preserving passwords in DB
+    if (payload.users) {
+      for (const u of payload.users) {
+        const existing = await User.findOne({ id: u.id }, null, options).lean();
+        const updateObj = { ...u };
+        delete updateObj._id;
+        if (existing && !u.password) {
+          updateObj.password = existing.password;
         }
+        await User.findOneAndUpdate({ id: u.id }, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
+      }
+      if (req.user.role === 'superadmin' || req.user.role === 'admin') {
+        const payloadUserIds = payload.users.map(u => u.id);
+        await User.deleteMany({ id: { $nin: payloadUserIds } }, options);
       }
     }
-    await syncCollection(ApplicationAnswer, payload.applicationAnswers, 'id', options);
-    await syncCollection(Notification, payload.notifications, 'id', options);
-    await syncCollection(Assignment, payload.assignments, 'id', options);
-    await syncCollection(AuditLog, payload.auditLogs, 'id', options);
-    await syncCollection(SchemaVersion, payload.schemaVersions, 'id', options);
-    await syncCollection(Guideline, payload.guidelines, 'id', options);
-    await syncCollection(DocumentRule, payload.documentRules, 'id', options);
-    await syncCollection(Department, payload.departments, 'id', options);
-    await syncCollection(ReassignmentHistory, payload.reassignmentHistory, 'id', options);
-    await syncCollection(RecycleBin, payload.recycleBin, 'id', options);
 
-    if (payload.messages) {
-      await syncCollection(Message, payload.messages, 'id', options);
-    }
+    if (req.user.role === 'admin' || req.user.role === 'reviewer') {
+      // Admins cannot change Edition schemas or global Platform Settings
+      await syncCollection(Application, payload.applications, 'id', options);
+      
+      if (payload.applicationAnswers) {
+        for (let ans of payload.applicationAnswers) {
+          const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
+          if (existingAns && existingAns.files && existingAns.files.length > 0) {
+            ans.files = ans.files || [];
+            ans.files = ans.files.map(f => {
+              const existingFile = existingAns.files.find(ef => ef.docId === f.docId);
+              if (existingFile && existingFile.dataUrl && !f.dataUrl) {
+                f.dataUrl = existingFile.dataUrl;
+              }
+              return f;
+            });
+          }
+        }
+      }
+      await syncCollection(ApplicationAnswer, payload.applicationAnswers, 'id', options);
+      await syncCollection(Notification, payload.notifications, 'id', options);
+      await syncCollection(Assignment, payload.assignments, 'id', options);
+      await syncCollection(AuditLog, payload.auditLogs, 'id', options);
+      await syncCollection(ReassignmentHistory, payload.reassignmentHistory, 'id', options);
+      await syncCollection(RecycleBin, payload.recycleBin, 'id', options);
 
-    if (payload.settings) {
-      await Settings.findOneAndUpdate({}, payload.settings, { upsert: true, ...options });
+      if (payload.messages) {
+        await syncCollection(Message, payload.messages, 'id', options);
+      }
+    } else if (req.user.role === 'superadmin') {
+      // Super Admin syncs everything
+      await syncCollection(Edition, payload.editions, 'id', options);
+      await syncCollection(ReformArea, payload.reformAreas, 'id', options);
+      await syncCollection(FormField, payload.formFields, 'id', options);
+      await syncCollection(Application, payload.applications, 'id', options);
+
+      if (payload.applicationAnswers) {
+        for (let ans of payload.applicationAnswers) {
+          const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
+          if (existingAns && existingAns.files && existingAns.files.length > 0) {
+            ans.files = ans.files || [];
+            ans.files = ans.files.map(f => {
+              const existingFile = existingAns.files.find(ef => ef.docId === f.docId);
+              if (existingFile && existingFile.dataUrl && !f.dataUrl) {
+                f.dataUrl = existingFile.dataUrl;
+              }
+              return f;
+            });
+          }
+        }
+      }
+      await syncCollection(ApplicationAnswer, payload.applicationAnswers, 'id', options);
+      await syncCollection(Notification, payload.notifications, 'id', options);
+      await syncCollection(Assignment, payload.assignments, 'id', options);
+      await syncCollection(AuditLog, payload.auditLogs, 'id', options);
+      await syncCollection(SchemaVersion, payload.schemaVersions, 'id', options);
+      await syncCollection(Guideline, payload.guidelines, 'id', options);
+      await syncCollection(DocumentRule, payload.documentRules, 'id', options);
+      await syncCollection(Department, payload.departments, 'id', options);
+      await syncCollection(ReassignmentHistory, payload.reassignmentHistory, 'id', options);
+      await syncCollection(RecycleBin, payload.recycleBin, 'id', options);
+
+      if (payload.messages) {
+        await syncCollection(Message, payload.messages, 'id', options);
+      }
+
+      if (payload.settings) {
+        await Settings.findOneAndUpdate({}, payload.settings, { upsert: true, ...options });
+      }
     }
 
     if (useTransaction) {
@@ -868,9 +1161,28 @@ app.get('/api/files/:appId/:fieldId/:docId', verifySession, async (req, res) => 
     const appRecord = await Application.findOne({ id: appId }).lean();
     if (!appRecord) return res.status(404).send('Application not found');
 
-    if (appRecord.status === 'Draft' || req.user.role === 'user') {
+    // Enforce role security
+    if (req.user.role === 'user') {
       if (req.user.id !== appRecord.userId) {
         return res.status(403).send('Access denied: You do not own this application');
+      }
+      const field = await FormField.findOne({ id: fieldId }).lean();
+      const userAssignments = await Assignment.find({ userId: req.user.id }).lean();
+      if (!field || !await isFieldAssignedToUserBackend(field, req.user, { assignments: userAssignments })) {
+        return res.status(403).send('Access denied: Question is not assigned to you');
+      }
+    } else if (req.user.role === 'admin' || req.user.role === 'reviewer') {
+      if (appRecord.status === 'Draft') {
+        return res.status(403).send('Access denied: Draft application');
+      }
+      const applicant = await User.findOne({ id: appRecord.userId }).lean();
+      if (req.user.organization !== 'DPIIT' && applicant && applicant.organization !== req.user.organization) {
+        return res.status(403).send('Access denied: Application belongs to another department');
+      }
+    } else if (req.user.role === 'superadmin') {
+      const allowed = ['Admin Approved', 'Super Admin Review', 'Final Approved', 'Rejected'];
+      if (!allowed.includes(appRecord.status)) {
+        return res.status(403).send('Access denied: Application is not in Super Admin review stage');
       }
     }
 

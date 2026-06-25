@@ -3,7 +3,7 @@
    Dynamic SRF Management Platform v2.0
    ========================================================================== */
 
-import { authenticateUser, addAuditLog, getDb, updateUser } from '../db/store.js';
+import { initStore, addAuditLog, getDb, updateUser } from '../db/store.js';
 import { clearPermissionCache, ROLE_LABELS } from './rbac.js';
 
 const SESSION_KEY = 'srf_session_v2';
@@ -25,28 +25,41 @@ export function initAuth() {
   }
 }
 
-export function login(username, password) {
-  const user = authenticateUser(username.trim().toLowerCase(), password);
-  if (!user) return { success: false, error: 'Invalid username or password.' };
-  
-  // Record last login timestamp
-  updateUser(user.id, { lastLogin: new Date().toISOString() });
-  
-  // Retrieve the updated user object (with lastLogin set)
-  const updatedUser = (_db => {
-    try {
-      return getDb().users.find(u => u.id === user.id);
-    } catch(e) {
-      return user;
+export async function login(username, password) {
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username, password })
+    });
+    
+    if (!res.ok) {
+      const errData = await res.json();
+      return { success: false, error: errData.error || 'Invalid username or password.' };
     }
-  })();
 
-  _currentUser = { ...(updatedUser || user), password: undefined }; // never store password in session
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(_currentUser));
-  addAuditLog(user.id, 'User login', 'auth', user.id);
-  clearPermissionCache();
-  _onLoginCallbacks.forEach(cb => cb(_currentUser));
-  return { success: true, user: _currentUser };
+    const resData = await res.json();
+    const user = resData.user;
+
+    _currentUser = { ...user, password: undefined };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(_currentUser));
+
+    // Re-run initStore to fetch role-filtered database state
+    await initStore();
+
+    // Record last login timestamp
+    updateUser(user.id, { lastLogin: new Date().toISOString() });
+
+    addAuditLog(user.id, 'User login', 'auth', user.id);
+    clearPermissionCache();
+    _onLoginCallbacks.forEach(cb => cb(_currentUser));
+    return { success: true, user: _currentUser };
+  } catch (err) {
+    console.error('[Login fetch error]:', err);
+    return { success: false, error: 'Network error or server unavailable.' };
+  }
 }
 
 export function logout() {
