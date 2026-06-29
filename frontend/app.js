@@ -544,39 +544,54 @@ function openForgotPasswordModal() {
     let html = '';
     if (step === 1) {
       html = `
-        <div class="modal-card-custom animate-modal-in" style="max-width: 400px; text-align: left;">
-          <h3 class="modal-title-custom">Account Recovery</h3>
-          <p class="modal-msg-custom">Enter your username or registered email. We will send you an OTP code to verify your identity.</p>
-          <div class="form-group" style="margin-bottom: 15px;">
-            <label for="recovery-input" style="font-weight:600;">Username or Email</label>
-            <input type="text" id="recovery-input" required class="form-input" placeholder="e.g. ap_officer" style="width: 100%;">
+        <div class="modal-card-custom animate-modal-in" style="max-width: 420px; width: 90%; padding: 32px; border-radius: 24px; text-align: left; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+          <h3 class="modal-title-custom" style="margin-bottom:12px; font-family:var(--font-title); font-weight:800; font-size:22px; color:#0f172a;">Account Recovery</h3>
+          <p class="modal-msg-custom" style="font-size: 14px; color: #64748b; margin-bottom: 24px; line-height:1.5;">Enter your username or registered email. We will send you an OTP code to verify your identity.</p>
+          <div class="form-group" style="margin-bottom: 24px;">
+            <label for="recovery-input" style="font-weight:600; font-size:13px; margin-bottom:8px; display:block; color:#334155;">Username or Email</label>
+            <input type="text" id="recovery-input" required class="form-input" placeholder="e.g. ap_officer" style="width: 100%; border-radius: 12px; padding: 12px 16px; border: 1px solid #cbd5e1; background: #f8fafc; outline: none; transition: all 0.3s ease;">
           </div>
-          <div class="modal-actions-custom" style="margin-top: 20px;">
-            <button type="button" class="btn btn-secondary" id="btn-recovery-cancel">Cancel</button>
-            <button type="button" class="btn btn-primary" id="btn-recovery-send">Send OTP</button>
+          <div class="modal-actions-custom" style="margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" id="btn-recovery-cancel" style="border-radius: 12px; padding: 12px 24px; font-weight: 600; background: #f1f5f9; color: #475569; border: none;">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btn-recovery-send" style="border-radius: 12px; padding: 12px 24px; font-weight: 700; background: linear-gradient(135deg, #4f46e5, #7c3aed); border: none; box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39); color: white; display: flex; align-items: center; justify-content: center; min-width: 120px;">
+              <span class="btn-text">Send OTP</span>
+              <svg class="spinner-icon" style="display:none; animation:spin 1s linear infinite; margin-left:8px;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+            </button>
           </div>
         </div>
       `;
     } else if (step === 2) {
       html = `
-        <div class="modal-card-custom animate-modal-in" style="max-width: 400px; text-align: left;">
-          <h3 class="modal-title-custom">Reset Password</h3>
-          <p class="modal-msg-custom">We have sent a 6-digit OTP code to <strong>${maskedEmail}</strong>. Please enter the OTP and your new password below.</p>
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="recovery-otp" style="font-weight:600;">6-Digit OTP Code</label>
-            <input type="text" id="recovery-otp" maxlength="6" required class="form-input" placeholder="e.g. 123456" style="width: 100%; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 4px;">
+        <div class="modal-card-custom animate-modal-in" style="max-width: 420px; width: 90%; padding: 32px; border-radius: 24px; text-align: left; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+          <h3 class="modal-title-custom" style="margin-bottom:12px; font-family:var(--font-title); font-weight:800; font-size:22px; color:#0f172a;">Reset Password</h3>
+          <p class="modal-msg-custom" style="font-size: 14px; color: #64748b; margin-bottom: 24px; line-height:1.5;">We have sent a 6-digit OTP code to <strong>${maskedEmail}</strong>. Please enter the OTP and your new password below.</p>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="recovery-otp" style="font-weight:600; font-size:13px; margin-bottom:8px; display:block; color:#334155;">6-Digit OTP Code</label>
+            <input type="text" id="recovery-otp" maxlength="6" required class="form-input" placeholder="e.g. 123456" style="width: 100%; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 4px; border-radius: 12px; padding: 12px 16px; border: 1px solid #cbd5e1; background: #f8fafc; outline: none; transition: all 0.3s ease;">
           </div>
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="recovery-pwd-new" style="font-weight:600;">New Password</label>
-            <input type="password" id="recovery-pwd-new" required class="form-input" placeholder="••••••••" style="width: 100%;">
+          <div class="form-group" style="margin-bottom: 16px; position:relative;">
+            <label for="recovery-pwd-new" style="font-weight:600; font-size:13px; margin-bottom:8px; display:block; color:#334155;">New Password</label>
+            <input type="password" id="recovery-pwd-new" required class="form-input" placeholder="••••••••" style="width: 100%; border-radius: 12px; padding: 12px 16px; padding-right:40px; border: 1px solid #cbd5e1; background: #f8fafc; outline: none; transition: all 0.3s ease; font-family:monospace;">
+            <button type="button" class="toggle-rec-pwd" data-target="recovery-pwd-new" style="position:absolute; right:12px; bottom:12px; background:none; border:none; cursor:pointer; color:#64748b; display:flex; align-items:center; justify-content:center; padding:4px; border-radius:6px; transition:0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='none'">
+              <svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
           </div>
-          <div class="form-group" style="margin-bottom: 20px;">
-            <label for="recovery-pwd-confirm" style="font-weight:600;">Confirm New Password</label>
-            <input type="password" id="recovery-pwd-confirm" required class="form-input" placeholder="••••••••" style="width: 100%;">
+          <div class="form-group" style="margin-bottom: 24px; position:relative;">
+            <label for="recovery-pwd-confirm" style="font-weight:600; font-size:13px; margin-bottom:8px; display:block; color:#334155;">Confirm New Password</label>
+            <input type="password" id="recovery-pwd-confirm" required class="form-input" placeholder="••••••••" style="width: 100%; border-radius: 12px; padding: 12px 16px; padding-right:40px; border: 1px solid #cbd5e1; background: #f8fafc; outline: none; transition: all 0.3s ease; font-family:monospace;">
+            <button type="button" class="toggle-rec-pwd" data-target="recovery-pwd-confirm" style="position:absolute; right:12px; bottom:12px; background:none; border:none; cursor:pointer; color:#64748b; display:flex; align-items:center; justify-content:center; padding:4px; border-radius:6px; transition:0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='none'">
+              <svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
           </div>
-          <div class="modal-actions-custom">
-            <button type="button" class="btn btn-secondary" id="btn-recovery-back">Back</button>
-            <button type="button" class="btn btn-primary" id="btn-recovery-submit">Reset Password</button>
+          <div class="modal-actions-custom" style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
+            <button type="button" class="btn btn-link" id="btn-recovery-resend" style="color: var(--primary); padding: 0; font-size: 13px; font-weight: 600;">Resend OTP</button>
+            <div style="display:flex; gap:12px;">
+              <button type="button" class="btn btn-secondary" id="btn-recovery-back" style="border-radius: 12px; padding: 12px 24px; font-weight: 600; background: #f1f5f9; color: #475569; border: none;">Back</button>
+              <button type="button" class="btn btn-primary" id="btn-recovery-verify" style="border-radius: 12px; padding: 12px 24px; font-weight: 700; background: linear-gradient(135deg, #4f46e5, #7c3aed); border: none; box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39); color: white; display: flex; align-items: center; justify-content: center; min-width: 130px;">
+                <span class="btn-text">Reset Password</span>
+                <svg class="spinner-icon" style="display:none; animation:spin 1s linear infinite; margin-left:8px;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -589,16 +604,22 @@ function openForgotPasswordModal() {
     if (step === 1) {
       backdrop.querySelector('#btn-recovery-cancel').addEventListener('click', () => backdrop.remove());
       backdrop.querySelector('#btn-recovery-send').addEventListener('click', async () => {
-        const val = backdrop.querySelector('#recovery-input').value.trim();
-        if (!val) {
+        const identifier = backdrop.querySelector('#recovery-input').value.trim();
+        if (!identifier) {
           showToast('Please enter your Username or Email.', 'error');
           return;
         }
-        const btn = backdrop.querySelector('#btn-recovery-send');
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
+        const sendBtn = document.getElementById('btn-recovery-send');
+        const btnText = sendBtn.querySelector('.btn-text');
+        const spinner = sendBtn.querySelector('.spinner-icon');
+        
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = '0.8';
+        btnText.textContent = 'Sending...';
+        spinner.style.display = 'block';
+
         try {
-          const res = await postJson('/api/forgot-password', { usernameOrEmail: val });
+          const res = await postJson('/api/forgot-password', { usernameOrEmail: identifier });
           userId = res.userId;
           const emailParts = res.email.split('@');
           maskedEmail = emailParts[0].slice(0, 3) + '•••@' + emailParts[1];
@@ -607,48 +628,67 @@ function openForgotPasswordModal() {
           renderStep();
         } catch (err) {
           showToast(err.message || 'Account lookup failed.', 'error');
-          btn.disabled = false;
-          btn.textContent = 'Send OTP';
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = '1';
+          btnText.textContent = 'Send OTP';
+          spinner.style.display = 'none';
         }
       });
     } else if (step === 2) {
+      backdrop.querySelectorAll('.toggle-rec-pwd').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const input = document.getElementById(this.dataset.target);
+          const isPassword = input.type === 'password';
+          input.type = isPassword ? 'text' : 'password';
+          this.innerHTML = isPassword 
+            ? '<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+            : '<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        });
+      });
       backdrop.querySelector('#btn-recovery-back').addEventListener('click', () => {
         step = 1;
         renderStep();
       });
-      backdrop.querySelector('#btn-recovery-submit').addEventListener('click', async () => {
+      backdrop.querySelector('#btn-recovery-verify').addEventListener('click', async () => {
         const otp = backdrop.querySelector('#recovery-otp').value.trim();
-        const pwd = backdrop.querySelector('#recovery-pwd-new').value;
+        const newPassword = backdrop.querySelector('#recovery-pwd-new').value;
         const confirm = backdrop.querySelector('#recovery-pwd-confirm').value;
 
-        if (!otp || !pwd || !confirm) {
+        if (!otp || !newPassword || !confirm) {
           showToast('All fields are required.', 'error');
           return;
         }
-        if (pwd !== confirm) {
+        if (newPassword !== confirm) {
           showToast('Passwords do not match.', 'error');
           return;
         }
-        if (pwd.length < 3) {
+        if (newPassword.length < 3) {
           showToast('Password must be at least 3 characters.', 'error');
           return;
         }
 
-        const btn = backdrop.querySelector('#btn-recovery-submit');
-        btn.disabled = true;
-        btn.textContent = 'Resetting...';
+        const verifyBtn = document.getElementById('btn-recovery-verify');
+        const btnText = verifyBtn.querySelector('.btn-text');
+        const spinner = verifyBtn.querySelector('.spinner-icon');
+
+        verifyBtn.disabled = true;
+        verifyBtn.style.opacity = '0.8';
+        btnText.textContent = 'Verifying...';
+        spinner.style.display = 'block';
 
         try {
-          await postJson('/api/reset-password', { userId, otp, newPassword: pwd });
+          await postJson('/api/reset-password', { userId, otp, newPassword });
           try {
-            updateUser(userId, { password: pwd, mustResetPassword: false });
+            updateUser(userId, { password: newPassword, mustResetPassword: false });
           } catch(e) {}
           showToast('Password reset successfully! Please sign in.', 'success');
           backdrop.remove();
         } catch (err) {
           showToast(err.message || 'Verification or reset failed.', 'error');
-          btn.disabled = false;
-          btn.textContent = 'Reset Password';
+          verifyBtn.disabled = false;
+          verifyBtn.style.opacity = '1';
+          btnText.textContent = 'Reset Password';
+          spinner.style.display = 'none';
         }
       });
     }
@@ -9180,3 +9220,32 @@ function renderDiagnosticsPanel() {
   document.body.appendChild(btn);
   document.body.appendChild(panel);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBAL RIPPLE ANIMATION ON BUTTONS
+// ═══════════════════════════════════════════════════════════════════════════
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.btn');
+  if (!btn) return;
+  
+  const circle = document.createElement('span');
+  const diameter = Math.max(btn.clientWidth, btn.clientHeight);
+  const radius = diameter / 2;
+
+  const rect = btn.getBoundingClientRect();
+  circle.style.width = circle.style.height = `${diameter}px`;
+  circle.style.left = `${e.clientX - rect.left - radius}px`;
+  circle.style.top = `${e.clientY - rect.top - radius}px`;
+  circle.classList.add('ripple-element');
+
+  const existingRipple = btn.querySelector('.ripple-element');
+  if (existingRipple) {
+    existingRipple.remove();
+  }
+
+  btn.appendChild(circle);
+  
+  setTimeout(() => {
+    if(circle && circle.parentNode) circle.remove();
+  }, 600);
+});

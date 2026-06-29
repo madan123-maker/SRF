@@ -3326,3 +3326,37 @@ textarea, select.form-select, .reg-select {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ─── Global Button Ripple Effect ─── */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-element {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple-animation 600ms linear;
+  background-color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+.btn-secondary .ripple-element, .btn-outline .ripple-element, .btn-link .ripple-element, .btn-danger .ripple-element, .btn-ghost .ripple-element {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+@keyframes ripple-animation {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
+  .dashboard-grid { grid-template-columns: 1fr !important; }
+  .modal-card-custom { width: 95% !important; padding: 24px !important; }
+  .sidebar { transform: translateX(-100%); position: fixed; z-index: 1000; }
+  .sidebar.active { transform: translateX(0); }
+  .header-actions { flex-direction: column; gap: 10px; }
+  .form-group-row { flex-direction: column; gap: 10px; }
+  .form-group-row > .form-group { width: 100% !important; }
+}
