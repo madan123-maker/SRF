@@ -368,30 +368,90 @@ function openFirstLoginResetModal(userObj) {
   backdrop.style.zIndex = '10005';
   
   backdrop.innerHTML = `
-    <div class="modal-card-custom animate-modal-in" style="max-width:400px; text-align:left;">
-      <h3 class="modal-title-custom" style="margin-bottom:15px; font-family:var(--font-title); font-weight:700; color:var(--text-dark);">Reset Password (First Login)</h3>
-      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
-        For security purposes, you are required to change your temporary password on your first login.
+    <div class="modal-card-custom animate-modal-in" style="max-width:420px; width:90%; padding:32px; border-radius:24px; text-align:left; background:#ffffff; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+      <h3 class="modal-title-custom" style="margin-bottom:12px; font-family:var(--font-title); font-weight:800; font-size:22px; color:#0f172a;">Reset Password</h3>
+      <p style="font-size: 14px; color: #64748b; margin-bottom: 24px; line-height:1.5;">
+        For security purposes, please set a new password for your first login.
       </p>
-      <div class="form-group" style="margin-bottom:12px;">
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">New Password *</label>
-        <input type="password" id="first-reset-pwd-new" class="form-input" placeholder="••••••••" style="width:100%;" required>
+      
+      <div class="form-group" style="margin-bottom:16px; position:relative;">
+        <label style="display:block; font-weight:600; margin-bottom:8px; font-size:13px; color:#334155;">New Password <span style="color:#ef4444">*</span></label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input type="password" id="first-reset-pwd-new" class="form-input" placeholder="••••••••" style="width:100%; border-radius:12px; padding:12px 16px; padding-right:80px; border:1px solid #cbd5e1; background:#f8fafc; transition:all 0.3s ease; outline:none; font-family:monospace;" required>
+          <div style="position:absolute; right:12px; display:flex; gap:6px;">
+            <button type="button" id="toggle-pwd-new" title="Show/Hide" style="background:none; border:none; padding:4px; cursor:pointer; color:#64748b; border-radius:6px; transition:0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='none'">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+            <button type="button" id="copy-pwd-new" title="Copy Password" style="background:none; border:none; padding:4px; cursor:pointer; color:#64748b; border-radius:6px; transition:0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='none'">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="form-group" style="margin-bottom:20px;">
-        <label style="display:block; font-weight:600; margin-bottom:6px; font-size:13px; color:var(--text-main);">Confirm New Password *</label>
-        <input type="password" id="first-reset-pwd-confirm" class="form-input" placeholder="••••••••" style="width:100%;" required>
+      
+      <div class="form-group" style="margin-bottom:28px; position:relative;">
+        <label style="display:block; font-weight:600; margin-bottom:8px; font-size:13px; color:#334155;">Confirm Password <span style="color:#ef4444">*</span></label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input type="password" id="first-reset-pwd-confirm" class="form-input" placeholder="••••••••" style="width:100%; border-radius:12px; padding:12px 16px; padding-right:44px; border:1px solid #cbd5e1; background:#f8fafc; transition:all 0.3s ease; outline:none; font-family:monospace;" required>
+          <button type="button" id="toggle-pwd-confirm" title="Show/Hide" style="position:absolute; right:12px; background:none; border:none; padding:4px; cursor:pointer; color:#64748b; border-radius:6px; transition:0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='none'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </button>
+        </div>
       </div>
-      <div style="display:flex; justify-content:flex-end; gap:10px;">
-        <button class="btn btn-primary" id="btn-submit-first-reset-pwd">Update Password</button>
-      </div>
+      
+      <button class="btn btn-primary" id="btn-submit-first-reset-pwd" style="width:100%; border-radius:12px; padding:14px; font-size:15px; font-weight:700; background:linear-gradient(135deg, #4f46e5, #7c3aed); border:none; box-shadow:0 4px 14px 0 rgba(99, 102, 241, 0.39); transition:all 0.3s ease; display:flex; justify-content:center; align-items:center; gap:8px;">
+        <span class="btn-text">Update Password</span>
+        <svg class="spinner-icon" style="display:none; animation:spin 1s linear infinite;" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+      </button>
     </div>
+    <style>
+      @keyframes spin { 100% { transform: rotate(360deg); } }
+      .form-input:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important; background: #fff !important; }
+      #btn-submit-first-reset-pwd:hover { transform: translateY(-2px); box-shadow:0 6px 20px rgba(99,102,241,0.5); }
+      #btn-submit-first-reset-pwd:active { transform: translateY(0); }
+    </style>
   `;
   
   document.body.appendChild(backdrop);
   
+  const newPwdInput = backdrop.querySelector('#first-reset-pwd-new');
+  const confirmPwdInput = backdrop.querySelector('#first-reset-pwd-confirm');
+  
+  // Show/Hide Toggle Logic
+  const toggleVisibility = (inputEl, btnEl) => {
+    const isPassword = inputEl.type === 'password';
+    inputEl.type = isPassword ? 'text' : 'password';
+    btnEl.innerHTML = isPassword 
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  };
+  
+  backdrop.querySelector('#toggle-pwd-new').addEventListener('click', function() {
+    toggleVisibility(newPwdInput, this);
+  });
+  
+  backdrop.querySelector('#toggle-pwd-confirm').addEventListener('click', function() {
+    toggleVisibility(confirmPwdInput, this);
+  });
+  
+  // Copy Password Logic
+  backdrop.querySelector('#copy-pwd-new').addEventListener('click', function() {
+    if (newPwdInput.value) {
+      navigator.clipboard.writeText(newPwdInput.value).then(() => {
+        const originalHtml = this.innerHTML;
+        this.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(() => { this.innerHTML = originalHtml; }, 2000);
+      });
+    }
+  });
+
+  const submitBtn = backdrop.querySelector('#btn-submit-first-reset-pwd');
+  const btnText = submitBtn.querySelector('.btn-text');
+  const spinner = submitBtn.querySelector('.spinner-icon');
+  
   submitBtn.addEventListener('click', async () => {
-    const newPwd = backdrop.querySelector('#first-reset-pwd-new').value;
-    const confirmPwd = backdrop.querySelector('#first-reset-pwd-confirm').value;
+    const newPwd = newPwdInput.value;
+    const confirmPwd = confirmPwdInput.value;
     
     if (!newPwd || !confirmPwd) {
       showToast('Please fill in all password fields.', 'error');
@@ -407,18 +467,32 @@ function openFirstLoginResetModal(userObj) {
     }
     
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Updating...';
+    submitBtn.style.opacity = '0.8';
+    btnText.textContent = 'Updating...';
+    spinner.style.display = 'block';
+    
     try {
       await postJson('/api/change-password', { userId: userObj.id, newPassword: newPwd });
       updateUser(userObj.id, { password: newPwd, mustResetPassword: false });
       addAuditLog(userObj.id, 'Reset temporary password on first login', 'auth', userObj.id);
       showToast('Password updated successfully! Logging you in...', 'success');
-      backdrop.remove();
-      initPortal();
+      
+      // Add success animation to button
+      submitBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      btnText.textContent = 'Success!';
+      spinner.style.display = 'none';
+      
+      setTimeout(() => {
+        backdrop.remove();
+        initPortal();
+      }, 800);
+      
     } catch(err) {
       showToast(err.message || 'Failed to update password.', 'error');
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Update Password';
+      submitBtn.style.opacity = '1';
+      btnText.textContent = 'Update Password';
+      spinner.style.display = 'none';
     }
   });
 }
@@ -1996,11 +2070,25 @@ function openCreateUserModal(container) {
     addAuditLog(getCurrentUser().id, `Registered state user: ${username}`, 'user', result.id);
     close();
     
-    // Display visual alert with details for the admin to copy
-    showAlert({
-      title: 'User Account Created',
-      message: `User "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${result.tempPassword}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
-    });
+    // Simple credential popup - plain text, no toggle buttons
+    (() => {
+      const pwd = result.tempPassword;
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      d.innerHTML = `<div style="background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:92%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+        <div style="width:52px;height:52px;background:#d1fae5;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;"><svg width="24" height="24" fill="none" stroke="#059669" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#111;">User Account Created</h3>
+        <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">User &ldquo;<strong>${username}</strong>&rdquo; has been successfully created.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:left;margin-bottom:16px;">
+          <div style="margin-bottom:12px;"><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Username</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;">${username}</div></div>
+          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
+        </div>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Login credentials emailed to <strong>${email}</strong>.</p>
+        <button id="u-ok" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:11px 36px;font-size:15px;font-weight:600;cursor:pointer;">OK</button>
+      </div>`;
+      document.body.appendChild(d);
+      d.querySelector('#u-ok').addEventListener('click', () => d.remove());
+    })();
 
     renderUsersPanel(container);
   });
@@ -2142,11 +2230,25 @@ function openCreateAdminModal(container) {
     addAuditLog(getCurrentUser().id, `Created admin user: ${username}`, 'user', result.id);
     close();
 
-    // Display visual alert with details for the admin to copy
-    showAlert({
-      title: 'Admin Account Created',
-      message: `Admin "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${result.tempPassword}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
-    });
+    // Simple credential popup - plain text, no toggle buttons
+    (() => {
+      const pwd = result.tempPassword;
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      d.innerHTML = `<div style="background:#fff;border-radius:16px;padding:36px 32px;max-width:420px;width:92%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+        <div style="width:52px;height:52px;background:#dbeafe;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;"><svg width="24" height="24" fill="none" stroke="#2563eb" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h3 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#111;">Admin Account Created</h3>
+        <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Admin &ldquo;<strong>${username}</strong>&rdquo; has been successfully created.</p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:left;margin-bottom:16px;">
+          <div style="margin-bottom:12px;"><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Username</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;">${username}</div></div>
+          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
+        </div>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Login credentials emailed to <strong>${email}</strong>.</p>
+        <button id="a-ok" style="background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:8px;padding:11px 36px;font-size:15px;font-weight:600;cursor:pointer;">OK</button>
+      </div>`;
+      document.body.appendChild(d);
+      d.querySelector('#a-ok').addEventListener('click', () => d.remove());
+    })();
 
     renderUsersPanel(container);
   });

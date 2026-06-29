@@ -11,27 +11,21 @@ class EmailService {
   }
 
   configureTransporter() {
-    this.host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    this.port = process.env.SMTP_PORT || 587;
-    this.user = process.env.SMTP_USER;
-    this.pass = process.env.SMTP_PASS;
+    this.user = process.env.GMAIL_USER || process.env.SMTP_USER;
+    this.pass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
     this.from = process.env.EMAIL_FROM || this.user;
 
     if (this.user && this.pass) {
       this.transporter = nodemailer.createTransport({
-        host: this.host,
-        port: this.port,
-        secure: this.port == 465, // true for 465, false for other ports
+        service: 'gmail',
         auth: {
           user: this.user,
           pass: this.pass,
-        },
-        connectionTimeout: 5000,
-        greetingTimeout: 5000,
-        socketTimeout: 5000
+        }
       });
+      console.log(`✅ Email service configured with Gmail (${this.user})`);
     } else {
-      console.warn('⚠️ SMTP credentials not fully configured in .env');
+      console.warn('⚠️ Gmail credentials not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD in .env');
     }
   }
 

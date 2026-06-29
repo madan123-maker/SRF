@@ -2060,12 +2060,12 @@ app.post('/api/send-otp', async (req, res) => {
     return res.status(404).json({ error: 'OTP can only be sent to the email registered for this user.' });
   }
 
-  // Read SMTP config from .env
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  // Read Email config from .env
+  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER;
+  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
 
-  if (!smtpUser || !smtpPass) {
-    console.error('SMTP Credentials missing in .env');
+  if (!emailUser || !emailPass) {
+    console.error('Email Credentials missing in .env');
     return res.status(500).json({ error: 'Email service is not configured on the server. Please contact support or update .env.' });
   }
 
