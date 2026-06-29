@@ -26,6 +26,9 @@ class EmailService {
           user: this.user,
           pass: this.pass,
         },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 5000
       });
     } else {
       console.warn('⚠️ SMTP credentials not fully configured in .env');

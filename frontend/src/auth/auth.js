@@ -42,8 +42,9 @@ export async function login(username, password) {
 
     const resData = await res.json();
     const user = resData.user;
+    const token = resData.token;
 
-    _currentUser = { ...user, password: undefined };
+    _currentUser = { ...user, password: undefined, token };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(_currentUser));
 
     // Re-run initStore to fetch role-filtered database state

@@ -1862,47 +1862,31 @@ export function renderAdminAnalyticsDashboard(container) {
     </div>
     `}
  
-    <!-- System Database Validation Metrics (Phase 13) -->
+    <!-- System Database Validation Metrics (5 Clickable Cards) -->
     <div style="margin-bottom:28px;">
       <h3 style="font-size:16px; font-weight:700; margin-bottom:12px; color:var(--text-dark); display:flex; align-items:center; gap:8px;">
         <span>📊</span> System Database Validation Metrics (Real-time Counts)
       </h3>
-      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px;">
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--accent-indigo);">
-          <div style="font-size:20px; font-weight:800; color:var(--accent-indigo);">${allFilteredApps.length}</div>
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:12px;">
+        <div class="card glass-card analytics-stat-card" data-filter-status="all" style="padding:16px; text-align:center; border-top:3px solid var(--accent-indigo); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+          <div style="font-size:22px; font-weight:800; color:var(--accent-indigo);">${allFilteredApps.length}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Total Applications</div>
         </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--accent-blue);">
-          <div style="font-size:20px; font-weight:800; color:var(--accent-blue);">${allFilteredApps.filter(a => a.status === 'Draft').length}</div>
+        <div class="card glass-card analytics-stat-card" data-filter-status="Draft" style="padding:16px; text-align:center; border-top:3px solid var(--accent-blue); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+          <div style="font-size:22px; font-weight:800; color:var(--accent-blue);">${allFilteredApps.filter(a => a.status === 'Draft').length}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Draft Applications</div>
         </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--warning);">
-          <div style="font-size:20px; font-weight:800; color:var(--warning);">${allFilteredApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)).length}</div>
+        <div class="card glass-card analytics-stat-card" data-filter-status="Submitted" style="padding:16px; text-align:center; border-top:3px solid var(--warning); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+          <div style="font-size:22px; font-weight:800; color:var(--warning);">${allFilteredApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)).length}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Submitted Applications</div>
         </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--success);">
-          <div style="font-size:20px; font-weight:800; color:var(--success);">${allFilteredApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved'].includes(a.status)).length}</div>
+        <div class="card glass-card analytics-stat-card" data-filter-status="Approved" style="padding:16px; text-align:center; border-top:3px solid var(--success); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+          <div style="font-size:22px; font-weight:800; color:var(--success);">${allFilteredApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved'].includes(a.status)).length}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Approved Applications</div>
         </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid var(--danger);">
-          <div style="font-size:20px; font-weight:800; color:var(--danger);">${allFilteredApps.filter(a => a.status === 'Rejected').length}</div>
+        <div class="card glass-card analytics-stat-card" data-filter-status="Rejected" style="padding:16px; text-align:center; border-top:3px solid var(--danger); cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;">
+          <div style="font-size:22px; font-weight:800; color:var(--danger);">${allFilteredApps.filter(a => a.status === 'Rejected').length}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Rejected Applications</div>
-        </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #059669;">
-          <div style="font-size:20px; font-weight:800; color:#059669;">${(db.editions || []).filter(e => e.status === 'published' && !e.isDeleted).length}</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Published Forms</div>
-        </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #6b7280;">
-          <div style="font-size:20px; font-weight:800; color:#6b7280;">${(db.editions || []).filter(e => e.status === 'draft' && !e.isDeleted).length}</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Unpublished Forms</div>
-        </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #8b5cf6;">
-          <div style="font-size:20px; font-weight:800; color:#8b5cf6;">${activeUsers.length}</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Active Users</div>
-        </div>
-        <div class="card glass-card" style="padding:14px; text-align:center; border-top:3px solid #ec4899;">
-          <div style="font-size:20px; font-weight:800; color:#ec4899;">${(db.users || []).filter(u => ['admin', 'superadmin'].includes(u.role) && u.active !== false && (isSuper || adminOrg === 'DPIIT' || u.organization === adminOrg)).length}</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; font-weight:600;">Active Admins</div>
         </div>
       </div>
     </div>
@@ -1984,6 +1968,18 @@ export function renderAdminAnalyticsDashboard(container) {
       </div>
     </div>
 
+    <!-- District-wise Application Status Bar Graph -->
+    <div class="card glass-card" style="margin-bottom:24px;">
+      <div class="card-header">
+        <h2>📊 District-wise Application Status</h2>
+      </div>
+      <div class="card-body" style="padding:20px;">
+        <div class="chart-container-wrap" style="height: 320px; position: relative;">
+          <canvas id="admin-district-bar-graph"></canvas>
+        </div>
+      </div>
+    </div>
+
     <!-- Tabbed Application Workflow Queue -->
     <div class="card glass-card" style="margin-bottom:24px;">
       <div class="card-header">
@@ -2009,6 +2005,18 @@ export function renderAdminAnalyticsDashboard(container) {
       renderAdminAnalyticsDashboard(container);
     });
   }
+
+  // Bind clickable stat cards (hover + click to scroll to workflow table)
+  container.querySelectorAll('.analytics-stat-card').forEach(card => {
+    card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-3px)'; card.style.boxShadow = '0 6px 16px rgba(0,0,0,0.12)'; });
+    card.addEventListener('mouseleave', () => { card.style.transform = ''; card.style.boxShadow = ''; });
+    card.addEventListener('click', () => {
+      const workflowSection = container.querySelector('#workflow-lifecycle-table-container');
+      if (workflowSection) {
+        workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
 
   // Bind Export button
   container.querySelector('.btn-export-summary').addEventListener('click', () => {
@@ -2084,6 +2092,158 @@ export function renderAdminAnalyticsDashboard(container) {
             x: {
               grid: { display: false }
             }
+          }
+        }
+      });
+    }
+
+    // 3. District-wise Application Status Bar Graph (Elegant Grouped)
+    const ctxDistrictBar = document.getElementById('admin-district-bar-graph')?.getContext('2d');
+    if (ctxDistrictBar) {
+      // Group applications by district
+      const districtGroups = {};
+      allFilteredApps.forEach(app => {
+        const appUser = (db.users || []).find(u => u.id === app.userId);
+        const district = appUser?.district || appUser?.state || appUser?.organization || 'Unknown';
+        if (!districtGroups[district]) {
+          districtGroups[district] = { draft: 0, submitted: 0, approved: 0, rejected: 0 };
+        }
+        if (app.status === 'Draft') districtGroups[district].draft++;
+        else if (['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(app.status)) districtGroups[district].submitted++;
+        else if (['Admin Approved', 'Final Approved', 'Approved'].includes(app.status)) districtGroups[district].approved++;
+        else if (app.status === 'Rejected') districtGroups[district].rejected++;
+      });
+      
+      const districtLabels = Object.keys(districtGroups);
+
+      // Create gradient fills for each dataset
+      const createGradient = (ctx, startColor, endColor) => {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+        gradient.addColorStop(0, startColor);
+        gradient.addColorStop(1, endColor);
+        return gradient;
+      };
+
+      const draftGradient = createGradient(ctxDistrictBar, 'rgba(99, 102, 241, 0.9)', 'rgba(99, 102, 241, 0.3)');
+      const submittedGradient = createGradient(ctxDistrictBar, 'rgba(245, 158, 11, 0.9)', 'rgba(245, 158, 11, 0.3)');
+      const approvedGradient = createGradient(ctxDistrictBar, 'rgba(16, 185, 129, 0.9)', 'rgba(16, 185, 129, 0.3)');
+      const rejectedGradient = createGradient(ctxDistrictBar, 'rgba(239, 68, 68, 0.9)', 'rgba(239, 68, 68, 0.3)');
+      
+      new Chart(ctxDistrictBar, {
+        type: 'bar',
+        data: {
+          labels: districtLabels,
+          datasets: [
+            {
+              label: 'Draft',
+              data: districtLabels.map(d => districtGroups[d].draft),
+              backgroundColor: draftGradient,
+              borderColor: 'rgba(99, 102, 241, 1)',
+              borderWidth: 0,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7,
+              categoryPercentage: 0.65
+            },
+            {
+              label: 'Submitted',
+              data: districtLabels.map(d => districtGroups[d].submitted),
+              backgroundColor: submittedGradient,
+              borderColor: 'rgba(245, 158, 11, 1)',
+              borderWidth: 0,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7,
+              categoryPercentage: 0.65
+            },
+            {
+              label: 'Approved',
+              data: districtLabels.map(d => districtGroups[d].approved),
+              backgroundColor: approvedGradient,
+              borderColor: 'rgba(16, 185, 129, 1)',
+              borderWidth: 0,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7,
+              categoryPercentage: 0.65
+            },
+            {
+              label: 'Rejected',
+              data: districtLabels.map(d => districtGroups[d].rejected),
+              backgroundColor: rejectedGradient,
+              borderColor: 'rgba(239, 68, 68, 1)',
+              borderWidth: 0,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7,
+              categoryPercentage: 0.65
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 14,
+                boxHeight: 14,
+                borderRadius: 4,
+                useBorderRadius: true,
+                font: { size: 12, family: 'Inter, system-ui, sans-serif', weight: '500' },
+                padding: 20,
+                color: '#64748b'
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.92)',
+              titleFont: { size: 13, weight: '600', family: 'Inter, system-ui, sans-serif' },
+              bodyFont: { size: 12, family: 'Inter, system-ui, sans-serif' },
+              padding: { top: 10, bottom: 10, left: 14, right: 14 },
+              cornerRadius: 10,
+              boxPadding: 6,
+              callbacks: {
+                title: function(items) { return '📍 ' + items[0].label; },
+                label: function(ctx) {
+                  const icons = { Draft: '📝', Submitted: '📤', Approved: '✅', Rejected: '❌' };
+                  return ` ${icons[ctx.dataset.label] || '•'} ${ctx.dataset.label}: ${ctx.raw} application(s)`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { size: 12, weight: '500', family: 'Inter, system-ui, sans-serif' },
+                color: '#475569',
+                maxRotation: 35,
+                padding: 8
+              },
+              border: { display: false }
+            },
+            y: {
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(148, 163, 184, 0.12)',
+                drawBorder: false,
+                lineWidth: 1
+              },
+              ticks: {
+                stepSize: 1,
+                font: { size: 11, family: 'Inter, system-ui, sans-serif' },
+                color: '#94a3b8',
+                padding: 8,
+                callback: function(value) { return Number.isInteger(value) ? value : ''; }
+              },
+              border: { display: false }
+            }
+          },
+          animation: {
+            duration: 800,
+            easing: 'easeOutQuart'
           }
         }
       });
@@ -2191,12 +2351,22 @@ function renderAdminTabbedTable(tableContainer, selectedEditionId, isSuper, dash
       `;
     }
   } else {
+    // Helper: check if a Draft application has at least one individually submitted question
+    const hasDraftSubmittedQuestion = (app) => {
+      if (app.status !== 'Draft') return false;
+      const answers = Store.getAnswersByApplication(app.id) || [];
+      return answers.some(ans => ans.questionStatus === 'Submitted' || ans.questionStatus === 'Approved' || ans.questionStatus === 'Rejected');
+    };
+
+    // Include Draft apps with submitted questions in the "Submitted" queue
+    const draftsWithSubmittedQs = editionApps.filter(a => hasDraftSubmittedQuestion(a));
+
     const appsToRender = isSuper
-      ? (activeTab === 'submitted' ? editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status))
+      ? (activeTab === 'submitted' ? [...editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)), ...draftsWithSubmittedQs]
          : activeTab === 'pendingFinal' ? editionApps.filter(a => ['Admin Approved', 'Super Admin Review'].includes(a.status))
          : activeTab === 'approved' ? editionApps.filter(a => ['Final Approved', 'Approved'].includes(a.status))
          : editionApps.filter(a => a.status === 'Rejected'))
-      : (activeTab === 'submitted' ? editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status))
+      : (activeTab === 'submitted' ? [...editionApps.filter(a => ['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(a.status)), ...draftsWithSubmittedQs]
          : editionApps.filter(a => ['Admin Approved', 'Final Approved', 'Approved', 'Rejected'].includes(a.status)));
 
     if (appsToRender.length === 0) {

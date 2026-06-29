@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
@@ -114,19 +115,22 @@ async function seedDatabase() {
   }
 
   const userCount = await User.countDocuments();
-  if (userCount > 0) {
-    console.log('[Seed] Database already has data. Skipping user seed.');
+  const editionCount = await Edition.countDocuments();
+  if (userCount > 0 && editionCount > 0) {
+    console.log('[Seed] Database already has users and editions. Skipping seed.');
     return;
   }
 
   console.log('[Seed] Database is empty. Running initial seed...');
 
   // 1. Seed default users
-  const defaultUsers = buildDefaultUsers();
-  for (const u of defaultUsers) {
-    await User.create(u);
+  if (userCount === 0) {
+    const defaultUsers = buildDefaultUsers();
+    for (const u of defaultUsers) {
+      await User.create(u);
+    }
+    console.log(`[Seed] Seeded ${defaultUsers.length} default users.`);
   }
-  console.log(`[Seed] Seeded ${defaultUsers.length} default users.`);
 
   // 2. Seed settings
   const defaultSettings = {
@@ -237,15 +241,29 @@ async function seedDatabase() {
 
 // Auth verification middlewares
 async function verifySession(req, res, next) {
-  const reqUserId = req.header('X-User-Id');
-  const reqUserRole = req.header('X-User-Role');
-
-  if (!reqUserId || !reqUserRole) {
+  const authHeader = req.header('Authorization');
+  let token;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
+  
+  if (!token) {
+    const reqUserId = req.header('X-User-Id');
+    const reqUserRole = req.header('X-User-Role');
+    if (reqUserId && reqUserRole) {
+      try {
+        const user = await User.findOne({ id: reqUserId, role: reqUserRole }).lean();
+        if (!user || user.active === false) return res.status(403).json({ error: 'Access denied' });
+        req.user = user;
+        return next();
+      } catch(e) { return res.status(500).json({ error: 'Server error' }); }
+    }
     return res.status(401).json({ error: 'Session credentials required' });
   }
 
   try {
-    const user = await User.findOne({ id: reqUserId, role: reqUserRole }).lean();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'srf_super_secret_key_2026');
+    const user = await User.findOne({ id: decoded.id, role: decoded.role }).lean();
     if (!user || user.active === false) {
       return res.status(403).json({ error: 'Access denied: Invalid session or user inactive' });
     }
@@ -253,27 +271,48 @@ async function verifySession(req, res, next) {
     next();
   } catch (err) {
     console.error('[Auth Middleware Error]:', err);
-    res.status(500).json({ error: 'Server authentication error' });
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
 async function verifySessionOptional(req, res, next) {
-  const reqUserId = req.header('X-User-Id');
-  const reqUserRole = req.header('X-User-Role');
-  if (!reqUserId || !reqUserRole) {
-    return next();
+  let token = null;
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
   }
-  try {
-    const user = await User.findOne({ id: reqUserId, role: reqUserRole }).lean();
-    if (!user || user.active === false) {
-      return res.status(403).json({ error: 'Access denied: Invalid session or user inactive' });
+
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'srf_super_secret_key_2026');
+      console.log('Decoded JWT in Optional:', decoded);
+      const user = await User.findOne({ id: decoded.id, role: decoded.role }).lean();
+      if (user && user.active !== false) {
+        req.user = user;
+        console.log('Set req.user in Optional:', user.id);
+      } else {
+        console.log('User not found or inactive for token');
+      }
+    } catch (e) {
+      console.log('JWT Verification failed in Optional:', e.message);
     }
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error('[Auth Middleware Error]:', err);
-    res.status(500).json({ error: 'Server authentication error' });
   }
+
+  // Fallback for legacy headers
+  if (!req.user) {
+    const reqUserId = req.header('X-User-Id');
+    const reqUserRole = req.header('X-User-Role');
+    if (reqUserId && reqUserRole) {
+      try {
+        const user = await User.findOne({ id: reqUserId, role: reqUserRole }).lean();
+        if (user && user.active !== false) {
+          req.user = user;
+        }
+      } catch (e) {}
+    }
+  }
+
+  next();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -299,7 +338,26 @@ app.post('/api/login', async (req, res) => {
     
     const sanitizedUser = { ...user };
     delete sanitizedUser.password;
-    res.json({ success: true, user: sanitizedUser });
+    const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, process.env.JWT_SECRET || 'srf_super_secret_key_2026', { expiresIn: '24h' });
+    
+    // Add backend audit log for secure tracking
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || '127.0.0.1';
+    const loginAudit = new AuditLog({
+      id: 'audit_login_' + Date.now(),
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      action: 'User login (Backend Verified)',
+      entityType: 'auth',
+      entityId: user.id,
+      timestamp: new Date().toISOString(),
+      date: new Date().toISOString().slice(0, 10),
+      time: new Date().toTimeString().split(' ')[0],
+      ipAddress: clientIp
+    });
+    await loginAudit.save().catch(e => console.error('Failed to log login audit:', e));
+
+    res.json({ success: true, user: sanitizedUser, token });
   } catch (err) {
     console.error('[API Login Error]:', err);
     res.status(500).json({ error: 'Server error during authentication' });
@@ -329,8 +387,12 @@ app.post('/api/register', verifySession, async (req, res) => {
       return res.status(400).json({ error: 'Email already registered.' });
     }
 
-    // Generate secure temporary password on server
-    const tempPassword = 'Pass_' + crypto.randomBytes(4).toString('hex');
+    // Generate proper system temporary password on server
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let tempPassword = '';
+    for (let i = 0; i < 12; i++) {
+      tempPassword += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
     const hashedPassword = hashPassword(tempPassword);
 
     const newUser = new User({
@@ -353,9 +415,11 @@ app.post('/api/register', verifySession, async (req, res) => {
     // Send Welcome Email
     try {
       const loginUrl = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
-      await emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, role, loginUrl);
+      emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, role, loginUrl).catch(mailErr => {
+        console.error(`[Email Error] Failed to send credentials to ${email}:`, mailErr);
+      });
     } catch (mailErr) {
-      console.error(`[Email Error] Failed to send credentials to ${email}:`, mailErr);
+      console.error(`[Email Error] Failed to initiate email for ${email}:`, mailErr);
     }
 
     // Add Audit Log
@@ -377,7 +441,7 @@ app.post('/api/register', verifySession, async (req, res) => {
 
     const sanitized = newUser.toObject();
     delete sanitized.password;
-    res.json({ success: true, user: sanitized });
+    res.json({ success: true, user: sanitized, tempPassword: tempPassword });
   } catch (err) {
     console.error('[API Register Error]:', err);
     res.status(500).json({ error: 'Server error during user registration.' });
@@ -403,8 +467,12 @@ app.post('/api/register-public', async (req, res) => {
       return res.status(400).json({ error: 'Email already registered.' });
     }
 
-    // Generate secure temporary password on server
-    const tempPassword = 'Pass_' + crypto.randomBytes(4).toString('hex');
+    // Generate proper system temporary password
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let tempPassword = '';
+    for (let i = 0; i < 12; i++) {
+      tempPassword += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
     const hashedPassword = hashPassword(tempPassword);
 
     const newUser = new User({
@@ -427,9 +495,11 @@ app.post('/api/register-public', async (req, res) => {
     // Send Welcome Email
     try {
       const loginUrl = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
-      await emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, 'user', loginUrl);
+      emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, 'user', loginUrl).catch(mailErr => {
+        console.error(`[Email Error] Failed to send credentials to ${email}:`, mailErr);
+      });
     } catch (mailErr) {
-      console.error(`[Email Error] Failed to send credentials to ${email}:`, mailErr);
+      console.error(`[Email Error] Failed to initiate email for ${email}:`, mailErr);
     }
 
     // Add Audit Log
@@ -455,6 +525,26 @@ app.post('/api/register-public', async (req, res) => {
   } catch (err) {
     console.error('[API Public Register Error]:', err);
     res.status(500).json({ error: 'Server error during self-registration.' });
+  }
+});
+
+// DELETE user (Admin-only hard delete)
+app.delete('/api/users/:id', verifySession, async (req, res) => {
+  try {
+    if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: Only Super Admin or Admin can delete accounts.' });
+    }
+    const userId = req.params.id;
+    if (!userId) return res.status(400).json({ error: 'User ID required' });
+    
+    await User.deleteOne({ id: userId });
+    await Assignment.deleteMany({ userId: userId });
+    await Notification.deleteMany({ userId: userId });
+    
+    res.json({ success: true, message: 'User permanently deleted.' });
+  } catch (err) {
+    console.error('[API Delete User Error]:', err);
+    res.status(500).json({ error: 'Server error during user deletion.' });
   }
 });
 
@@ -495,7 +585,7 @@ app.post('/api/register-bulk', verifySession, async (req, res) => {
           continue;
         }
 
-        const tempPassword = 'Pass_' + crypto.randomBytes(4).toString('hex');
+        const tempPassword = crypto.randomBytes(16).toString('base64').slice(0, 16);
         const hashedPassword = hashPassword(tempPassword);
 
         const newUser = new User({
@@ -522,9 +612,11 @@ app.post('/api/register-bulk', verifySession, async (req, res) => {
         // Send Email
         try {
           const loginUrl = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3000');
-          await emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, role, loginUrl);
+          emailService.sendWelcomeEmail(email, cleanUsername, tempPassword, role, loginUrl).catch(mailErr => {
+            console.error(`[Email Error] Bulk registration mail fail for ${email}:`, mailErr);
+          });
         } catch (mailErr) {
-          console.error(`[Email Error] Bulk registration mail fail for ${email}:`, mailErr);
+          console.error(`[Email Error] Failed to initiate bulk mail for ${email}:`, mailErr);
         }
 
         // Audit Log
@@ -1528,10 +1620,12 @@ app.post('/api/db', verifySession, async (req, res) => {
       // Sync user answers (insert/update, and delete missing ones only for this user's applications)
       if (payload.applicationAnswers) {
         const payloadAnsIds = payload.applicationAnswers.map(ans => ans.id);
-        const userApps = await Application.find({ userId: req.user.id }, null, options).lean();
-        const userAppIds = userApps.map(a => a.id);
+        let activeAppIds = [];
         if (payload.applications) {
-          payload.applications.forEach(a => { if (!userAppIds.includes(a.id)) userAppIds.push(a.id); });
+          activeAppIds = payload.applications.map(a => a.id);
+        } else {
+          const userApps = await Application.find({ userId: req.user.id }, null, options).lean();
+          activeAppIds = userApps.map(a => a.id);
         }
 
         for (let ans of payload.applicationAnswers) {
@@ -1556,7 +1650,7 @@ app.post('/api/db', verifySession, async (req, res) => {
         }
 
         await ApplicationAnswer.deleteMany({
-          applicationId: { $in: userAppIds },
+          applicationId: { $in: activeAppIds },
           id: { $nin: payloadAnsIds }
         }, options);
       }
@@ -1649,9 +1743,11 @@ app.post('/api/db', verifySession, async (req, res) => {
 
         for (const user of newUsers) {
           try {
-            await emailService.sendWelcomeEmail(user.email, user.username, user.password, user.role);
+            emailService.sendWelcomeEmail(user.email, user.username, user.password, user.role).catch(mailErr => {
+              console.error(`[Email Error] Failed to send credentials to ${user.email} for ${user.username}:`, mailErr);
+            });
           } catch (mailErr) {
-            console.error(`[Email Error] Failed to send credentials to ${user.email} for ${user.username}:`, mailErr);
+            console.error(`[Email Error] Failed to initiate credentials email for ${user.email}:`, mailErr);
           }
         }
       }
@@ -1702,7 +1798,7 @@ app.post('/api/db', verifySession, async (req, res) => {
       }
       await syncCollection(ApplicationAnswer, payload.applicationAnswers, 'id', { ...options, skipDelete: true });
       await syncCollection(Notification, payload.notifications, 'id', { ...options, skipDelete: true });
-      await syncCollection(Assignment, payload.assignments, 'id', { ...options, skipDelete: true });
+      await syncCollection(Assignment, payload.assignments, 'id', options);
       await syncCollection(AuditLog, payload.auditLogs, 'id', { ...options, reqIp: clientIp, skipDelete: true });
       await syncCollection(ReassignmentHistory, payload.reassignmentHistory, 'id', { ...options, skipDelete: true });
       await upsertRecycleBinItems(payload.recycleBin, options);
@@ -1734,7 +1830,7 @@ app.post('/api/db', verifySession, async (req, res) => {
       }
       await syncCollection(ApplicationAnswer, payload.applicationAnswers, 'id', { ...options, skipDelete: true });
       await syncCollection(Notification, payload.notifications, 'id', { ...options, skipDelete: true });
-      await syncCollection(Assignment, payload.assignments, 'id', { ...options, skipDelete: true });
+      await syncCollection(Assignment, payload.assignments, 'id', options);
       await syncCollection(AuditLog, payload.auditLogs, 'id', { ...options, reqIp: clientIp, skipDelete: true });
       await syncCollection(SchemaVersion, payload.schemaVersions, 'id', options);
       await syncCollection(Guideline, payload.guidelines, 'id', options);

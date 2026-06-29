@@ -204,7 +204,8 @@ const throttledSyncRefresh = debounce(() => {
   }
 }, 1000);
 
-window.addEventListener('db-sync-complete', throttledSyncRefresh);
+// Disabled to prevent unexpected UI resets and dropdown closures during background auto-saves
+// window.addEventListener('db-sync-complete', throttledSyncRefresh);
 
 // Global Navigation History Stack
 window.navHistory = [];
@@ -1233,7 +1234,6 @@ function renderAdminSidebar() {
     tabs.push({ id: 'departments', label: 'Manage Departments', icon: '<path d="M4 21h16M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16H4V5zm4 4h2v2H8V9zm0 6h2v2H8v-2zm6-6h2v2h-2V9zm0 6h2v2h-2v-2z"/>', badge: '' });
     tabs.push({ id: 'assigned-details', label: 'Reassign Tasks', icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', badge: '' });
     tabs.push({ id: 'recycle-bin', label: 'Recycle Bin', icon: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>', badge: '' });
-    tabs.push({ id: 'governance', label: 'Governance & SLA', icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', badge: '' });
   }
 
   nav.innerHTML = tabs.map(t => `
@@ -1996,7 +1996,12 @@ function openCreateUserModal(container) {
     addAuditLog(getCurrentUser().id, `Registered state user: ${username}`, 'user', result.id);
     close();
     
-    showToast('User Created Successfully', 'success');
+    // Display visual alert with details for the admin to copy
+    showAlert({
+      title: 'User Account Created',
+      message: `User "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${result.tempPassword}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
+    });
+
     renderUsersPanel(container);
   });
 }
@@ -2137,7 +2142,12 @@ function openCreateAdminModal(container) {
     addAuditLog(getCurrentUser().id, `Created admin user: ${username}`, 'user', result.id);
     close();
 
-    showToast('User Created Successfully', 'success');
+    // Display visual alert with details for the admin to copy
+    showAlert({
+      title: 'Admin Account Created',
+      message: `Admin "${username}" has been successfully created.<br><br><strong>Username:</strong> ${username}<br><strong>Password:</strong> ${result.tempPassword}<br><br>An email containing these login credentials has been sent to <strong>${email}</strong>.`
+    });
+
     renderUsersPanel(container);
   });
 }
@@ -2835,6 +2845,12 @@ function renderAuditPanel(container) {
   // Application Tracking logic
   const allApps = getDb().applications || [];
   let filteredApps = allApps;
+  
+  // Exclude applications from soft-deleted editions
+  const activeEditions = getEditions().filter(e => !e.isDeleted);
+  const activeEditionIds = activeEditions.map(e => e.id);
+  filteredApps = filteredApps.filter(app => activeEditionIds.includes(app.editionId));
+
   if (currentAuditFilterUserId) {
     filteredApps = filteredApps.filter(app => app.userId === currentAuditFilterUserId);
   }
@@ -3189,9 +3205,9 @@ function renderAuditPanel(container) {
 // ─── DATA MANAGEMENT PANEL ────────────────────────────────────────────────
 function renderSettingsPanel(container) {
   const db = getDb() || {};
-  const editionsCount = (db.editions || []).length;
-  const appsCount = (db.applications || []).length;
-  const usersCount = (db.users || []).length;
+  const editionsCount = (db.editions || []).filter(e => !e.isDeleted).length;
+  const appsCount = (db.applications || []).filter(a => !a.isDeleted).length;
+  const usersCount = (db.users || []).filter(u => u.active !== false).length;
   const auditLogsCount = (db.auditLogs || []).length;
   const dbJsonString = JSON.stringify(db, null, 2);
 
@@ -7178,6 +7194,7 @@ function renderPublisherPanel(container) {
 // ═══════════════════════════════════════════════════════════════════════════
 function renderAssignedDetailsPanel(container) {
   const allUsers = getUsers();
+  const userIdSet = new Set(allUsers.map(u => u.id));
   const assignments = getAllAssignments().filter(a => {
     if (!a) return false;
     if (!a.userId) return false;
@@ -7185,6 +7202,9 @@ function renderAssignedDetailsPanel(container) {
     if (!user || user.active === false || user.status === 'deleted') return false;
     if (typeof isAssignmentValid === 'function' && !isAssignmentValid(a)) return false;
     if (a.status === 'deleted' || a.deleted === true) return false;
+    // Filter out system-published whole-document assignments (auto-assigned when super admin publishes)
+    if (!a.assignedBy || a.assignedBy === 'system' || a.assignedBy === 'System') return false;
+    if (!userIdSet.has(a.assignedBy)) return false;
     return true;
   });
   
@@ -8189,7 +8209,7 @@ function openRecycleBinViewModal(item, onRestore, onDelete) {
   const formatPayload = (data) => {
     if (!data) return '<p style="color:var(--text-muted);">No payload data available.</p>';
     try {
-      return `<pre style="background:var(--bg-secondary); border:1px solid var(--border-color); padding:12px; border-radius:8px; overflow-x:auto; font-family:monospace; font-size:12px; color:var(--text-dark); max-height:220px; white-space:pre-wrap; word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+      return `<pre style="background:var(--bg-secondary); border:1px solid var(--border-color); padding:12px; border-radius:8px; overflow-x:auto; font-family:monospace; font-size:12px; color:var(--text-main); max-height:220px; white-space:pre-wrap; word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
     } catch(e) {
       return '<p style="color:#ef4444;">Error formatting payload data.</p>';
     }
@@ -8561,39 +8581,27 @@ function renderRecycleBinPanel(container) {
       </div>
     </div>
 
-    <!-- Stats Grid (8 Columns) -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:12px;margin-bottom:24px;">
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid var(--accent-indigo);">
+    <!-- Stats Grid (5 Cards - Clickable) -->
+    <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;margin-bottom:24px;">
+      <div class="card glass-card rb-stat-card" data-filter-type="all" style="padding:14px;text-align:center;border-left:4px solid var(--accent-indigo);cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;">
         <div style="font-size:24px;font-weight:800;color:var(--accent-indigo);">${totalDeleted}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Total Items</div>
       </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #ef4444;">
+      <div class="card glass-card rb-stat-card" data-filter-type="edition" style="padding:14px;text-align:center;border-left:4px solid #ef4444;cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;">
         <div style="font-size:24px;font-weight:800;color:#ef4444;">${deletedSRFs}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">SRFs (Editions)</div>
       </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #f59e0b;">
+      <div class="card glass-card rb-stat-card" data-filter-type="assignment" style="padding:14px;text-align:center;border-left:4px solid #f59e0b;cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;">
         <div style="font-size:24px;font-weight:800;color:#f59e0b;">${deletedAssignments}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Assignments</div>
       </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #3b82f6;">
+      <div class="card glass-card rb-stat-card" data-filter-type="application" style="padding:14px;text-align:center;border-left:4px solid #3b82f6;cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;">
         <div style="font-size:24px;font-weight:800;color:#3b82f6;">${deletedApplications}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Applications</div>
       </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #10b981;">
+      <div class="card glass-card rb-stat-card" data-filter-type="user" style="padding:14px;text-align:center;border-left:4px solid #10b981;cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;">
         <div style="font-size:24px;font-weight:800;color:#10b981;">${deletedUsers}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Users</div>
-      </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #8b5cf6;">
-        <div style="font-size:24px;font-weight:800;color:#8b5cf6;">${deletedDepartments}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Departments</div>
-      </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #ec4899;">
-        <div style="font-size:24px;font-weight:800;color:#ec4899;">${deletedReformAreas}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Reform Areas</div>
-      </div>
-      <div class="card glass-card" style="padding:14px;text-align:center;border-left:4px solid #14b8a6;">
-        <div style="font-size:24px;font-weight:800;color:#14b8a6;">${deletedActionPoints}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">Action Points</div>
       </div>
     </div>
 
@@ -8769,6 +8777,17 @@ function renderRecycleBinPanel(container) {
   container.querySelectorAll('.rb-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.entityType = btn.dataset.type;
+      state.currentPage = 1;
+      renderRecycleBinPanel(container);
+    });
+  });
+
+  // Attach stat card click listeners (clickable cards filter view)
+  container.querySelectorAll('.rb-stat-card').forEach(card => {
+    card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; });
+    card.addEventListener('mouseleave', () => { card.style.transform = ''; card.style.boxShadow = ''; });
+    card.addEventListener('click', () => {
+      state.entityType = card.dataset.filterType;
       state.currentPage = 1;
       renderRecycleBinPanel(container);
     });
