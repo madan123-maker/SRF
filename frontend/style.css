@@ -146,12 +146,12 @@ textarea, select.form-select, .reg-select {
   text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0,0,0,0.02);
 }
-.status-draft         { background: rgba(245, 158, 11, 0.09) !important;  color: #d97706 !important;       border: 1px solid rgba(245, 158, 11, 0.25) !important; }
-.status-submitted     { background: rgba(14, 165, 233, 0.09) !important;  color: #0284c7 !important;   border: 1px solid rgba(14, 165, 233, 0.25) !important; }
-.status-review        { background: rgba(139, 92, 246, 0.09) !important;  color: #7c3aed !important; border: 1px solid rgba(139, 92, 246, 0.25) !important; }
-.status-approved      { background: rgba(16, 185, 129, 0.09) !important;  color: #059669 !important;       border: 1px solid rgba(16, 185, 129, 0.25) !important; }
-.status-rejected      { background: rgba(244, 63, 94, 0.09) !important;   color: #e11d48 !important;        border: 1px solid rgba(244, 63, 94, 0.25) !important; }
-.status-add-docs      { background: rgba(236, 72, 153, 0.09) !important;  color: #db2777 !important; border: 1px solid rgba(236, 72, 153, 0.25) !important; }
+.status-draft         { background: rgba(107, 114, 128, 0.09) !important;  color: #6b7280 !important;       border: 1px solid rgba(107, 114, 128, 0.25) !important; }
+.status-submitted     { background: rgba(59, 130, 246, 0.09) !important;   color: #3b82f6 !important;        border: 1px solid rgba(59, 130, 246, 0.25) !important; }
+.status-review        { background: rgba(59, 130, 246, 0.09) !important;   color: #3b82f6 !important;        border: 1px solid rgba(59, 130, 246, 0.25) !important; }
+.status-approved      { background: rgba(16, 185, 129, 0.09) !important;   color: #10b981 !important;        border: 1px solid rgba(16, 185, 129, 0.25) !important; }
+.status-rejected      { background: rgba(239, 68, 68, 0.09) !important;    color: #ef4444 !important;         border: 1px solid rgba(239, 68, 68, 0.25) !important; }
+.status-add-docs      { background: rgba(249, 115, 22, 0.09) !important;   color: #f97316 !important;        border: 1px solid rgba(249, 115, 22, 0.25) !important; }
 .badge-xs { font-size: 10px; padding: 2px 6px; }
 
 .role-badge {
@@ -3084,6 +3084,12 @@ textarea, select.form-select, .reg-select {
 .status-badge-yellow { background: rgba(234, 179, 8, 0.08); color: #eab308; }
 .status-badge-green { background: rgba(16, 185, 129, 0.08); color: #10b981; }
 .status-badge-red { background: rgba(239, 68, 68, 0.08); color: #ef4444; }
+.status-badge-gray { background: rgba(107, 114, 128, 0.08); color: #6b7280; }
+.status-border-gray { border-left: 4px solid #6b7280 !important; }
+
+/* accent-gray utility for progress bars and highlights */
+:root { --accent-gray: #6b7280; }
+
 
 /* SVG Circular Progress Ring */
 .progress-ring-container {

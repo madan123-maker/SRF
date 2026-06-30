@@ -16,20 +16,47 @@ let _currentPage = 1;
 const PAGE_SIZE = 20;
 
 // ─── APPLICATION TRACKER (ADMIN) ───────────────────────────────────────────
-export function renderApplicationTracker(container, editionId, onBack) {
+export async function renderApplicationTracker(container, editionId, onBack) {
   _currentEditionId = editionId;
   _currentPage = 1;
   _currentFilters = {};
 
+  // Show a quick loading state while refreshing from server
+  container.innerHTML = `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--text-muted);">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-indigo)" stroke-width="2" style="animation:spin 1s linear infinite; margin-bottom:12px;">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+      <p style="font-size:14px; font-weight:500;">Loading latest data…</p>
+    </div>
+  `;
+
+  // Refresh _db from server so admin always sees the latest submissions
+  try {
+    await Store.initStore();
+  } catch (e) {
+    console.warn('[ApplicationTracker] Could not refresh DB from server:', e);
+  }
+
   const edition = Store.getEditionById(editionId);
   const stats = Store.getEditionStats(editionId);
 
+  const lastRefreshed = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   container.innerHTML = `
     <div class="section-card" style="margin-bottom:24px;">
-      <button class="btn btn-secondary btn-sm" id="btn-back-editions" style="float:right;margin-top:4px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        All Editions
-      </button>
+      <div style="float:right; display:flex; gap:8px; margin-top:4px; align-items:center;">
+        <span style="font-size:11px; color:var(--text-muted);">Updated: ${lastRefreshed}</span>
+        <button class="btn btn-secondary btn-sm" id="btn-refresh-workspace" style="display:flex;align-items:center;gap:5px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btn-back-editions" style="display:flex;align-items:center;gap:5px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          All Editions
+        </button>
+      </div>
       <div class="section-badge admin-badge">Application Workspace</div>
       <h1>${edition ? edition.name : 'Edition'} Workspace</h1>
       <p style="color:var(--text-muted);font-size:14px;">${edition ? edition.description : ''}</p>
@@ -84,7 +111,14 @@ export function renderApplicationTracker(container, editionId, onBack) {
     <div id="workspace-schema-content" class="hidden"></div>
   `;
 
+
+
   container.querySelector('#btn-back-editions').addEventListener('click', () => { if (onBack) onBack(); });
+
+  // Refresh button — re-initialise store from server and re-render this workspace
+  container.querySelector('#btn-refresh-workspace')?.addEventListener('click', async () => {
+    renderApplicationTracker(container, editionId, onBack);
+  });
 
   // Tab switching
   const tabApps = container.querySelector('#tab-applications');

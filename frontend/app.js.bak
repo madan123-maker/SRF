@@ -102,27 +102,6 @@ async function boot() {
       throttledStorageRefresh();
     }
   });
-
-  // Background auto-refresh for Admins and Reviewers to fetch new submissions instantly
-  setInterval(async () => {
-    try {
-      const user = getCurrentUser();
-      if (user && ['admin', 'reviewer', 'superadmin'].includes(user.role)) {
-        if (document.visibilityState === 'visible') {
-          const db = getDb();
-          const oldAppsStr = JSON.stringify((db?.applications || []).map(a => ({ id: a.id, status: a.status, updatedAt: a.updatedAt })));
-          await initStore();
-          const newDb = getDb();
-          const newAppsStr = JSON.stringify((newDb?.applications || []).map(a => ({ id: a.id, status: a.status, updatedAt: a.updatedAt })));
-          if (oldAppsStr !== newAppsStr && window.refreshCurrentView) {
-            window.refreshCurrentView();
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Admin Auto-Refresh] Background sync failed:', e);
-    }
-  }, 6000); // Poll every 6 seconds for high responsiveness
 }
 boot();
 
@@ -1119,7 +1098,7 @@ function initGlobalSearch() {
           if (!isAdminOrSuper) {
             const userAssignments = getAssignments(user.id);
             const isAssigned = userAssignments.some(a => a.editionId === ed.id);
-            if (isAssigned && ed.status !== 'archived') {
+            if (isAssigned && ed.status === 'published') {
               results.Editions.push({ id: ed.id, label: ed.name, details: 'Edition' });
             }
           } else {
@@ -2316,68 +2295,33 @@ function openCreateAdminModal(container) {
 }
 
 
-function openAssignmentModal(userId, container) {
-  const user = getUserById(userId);
-  const editions = getEditions().filter(e => e.status !== 'archived' && !e.isDeleted);
-  const currentAssignments = getAssignments(userId);
+function openAssignmentModal(preselectedUserId, container) {
+  const editions = getEditions().filter(e => e.status !== 'published' && !e.isDeleted);
+  const availableUsers = getUsers().filter(u => u.role !== 'superadmin' && u.active !== false && u.status !== 'deleted');
 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.innerHTML = `
     <div class="modal-card-custom animate-modal-in" style="max-width:640px;text-align:left;max-height:85vh;overflow-y:auto;padding:24px;border-radius:16px;">
-      <h3 class="modal-title-custom" style="text-align:left;margin-bottom:6px;font-family:var(--font-title);font-weight:700;">Assign Areas / Questions — ${user?.name || userId}</h3>
-      <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Select an edition and assign Reform Areas, Action Points, or specific Questions to this user.</p>
+      <h3 class="modal-title-custom" style="text-align:left;margin-bottom:6px;font-family:var(--font-title);font-weight:700;">Assign Areas / Questions</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Select an edition, select user(s), and assign specific sections to them.</p>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="font-weight:600;font-size:13px;color:var(--text-main);">Select User(s)</label>
+        <select id="assign-users" class="form-input form-select" multiple style="height:100px;">
+          ${availableUsers.map(u => `<option value="${u.id}" ${u.id === preselectedUserId ? 'selected' : ''}>${u.name || u.username} (${u.role})</option>`).join('')}
+        </select>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Hold Ctrl/Cmd to select multiple users.</div>
+      </div>
 
       <div class="form-group" style="margin-bottom:16px;">
         <label style="font-weight:600;font-size:13px;color:var(--text-main);">Select Edition</label>
         <select id="assign-edition" class="form-input form-select" style="height:40px;">
+          <option value="ALL">All Editions</option>
           ${editions.map(e => `<option value="${e.id}">${e.name}</option>`).join('')}
         </select>
       </div>
-      <div id="assign-sections-list" style="margin-bottom:20px;max-height:400px;overflow-y:auto;padding-right:8px;"></div>
-
-      ${currentAssignments.length > 0 ? `
-        <div style="margin-bottom:20px;background:var(--bg-secondary);padding:16px;border-radius:8px;border:1px solid var(--border-color);">
-          <h4 style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-             Current Assignments
-          </h4>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-          ${currentAssignments.map(a => {
-            let displayTitle = a.responsibility;
-            if (!displayTitle || displayTitle === 'undefined') {
-              if (a.type === 'Question') {
-                const field = getFieldById(a.questionId || a.fieldId);
-                if (field) {
-                  displayTitle = field.num ? `Q${field.num}: ${field.label || field.text}` : (field.label || field.text);
-                }
-              } else if (a.type === 'Action Point') {
-                displayTitle = a.title || a.actionPointId || 'Action Point Task';
-              } else {
-                const allSections = getSectionsByEdition(a.editionId) || [];
-                const section = allSections.find(s => s.id === (a.sectionId || a.reformAreaId));
-                if (section) {
-                  displayTitle = section.name || section.title;
-                }
-              }
-            }
-            if (!displayTitle || displayTitle === 'undefined') {
-              displayTitle = a.title || a.sectionId || 'Specific Assignment';
-            }
-            return `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:8px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-                <div>
-                  <strong style="color:var(--text-main);">${displayTitle}</strong>
-                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Type: ${a.type || 'General'}</div>
-                </div>
-                <button class="btn btn-xs btn-danger btn-remove-assign" data-id="${a.id}">Remove</button>
-              </div>
-            `;
-          }).join('')}
-          </div>
-        </div>
-      ` : ''}
-
+      <div id="assign-sections-list" style="margin-bottom:20px;max-height:300px;overflow-y:auto;padding-right:8px;"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button id="close-assign-modal" class="btn btn-secondary">Close</button>
         <button id="submit-assign" class="btn btn-primary">Send Questions</button>
@@ -2388,8 +2332,22 @@ function openAssignmentModal(userId, container) {
   document.body.appendChild(backdrop);
 
   const loadSections = (editionId) => {
-    const reformAreas = getSectionsByEdition(editionId);
     const listEl = backdrop.querySelector('#assign-sections-list');
+
+    if (editionId === 'ALL') {
+      listEl.innerHTML = `
+        <div class="ra-assign-group" style="padding:20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;text-align:center;">
+          <label style="display:inline-flex;align-items:center;gap:12px;cursor:pointer;">
+            <input type="checkbox" class="assign-chk chk-all-editions" value="ALL" style="width:18px;height:18px;">
+            <span style="font-size:14px;font-weight:600;color:var(--text-main);">Assign Full Access to ALL Draft Editions</span>
+          </label>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">This will bulk assign all Reform Areas across all currently unpublished editions.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const reformAreas = getSectionsByEdition(editionId);
     
     if (reformAreas.length === 0) {
       listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">No reform areas found for this edition.</div>';
@@ -2496,59 +2454,68 @@ function openAssignmentModal(userId, container) {
 
   backdrop.querySelector('#close-assign-modal').addEventListener('click', () => backdrop.remove());
 
-  backdrop.querySelectorAll('.btn-remove-assign').forEach(btn => {
-    btn.addEventListener('click', () => {
-      removeAssignment(btn.dataset.id);
-      showToast('Assignment removed.', 'info');
-      backdrop.remove();
-      openAssignmentModal(userId, container);
-    });
-  });
-
   backdrop.querySelector('#submit-assign').addEventListener('click', () => {
     const editionId = backdrop.querySelector('#assign-edition').value;
     
     const assignmentsToCreate = [];
     
-    backdrop.querySelectorAll('.ra-assign-group').forEach(raGroup => {
-      const raChk = raGroup.querySelector('.chk-ra');
-      if (raChk && raChk.checked) {
-        assignmentsToCreate.push({
-          type: 'Reform Area',
-          sectionId: raChk.value,
-          reformAreaId: raChk.value,
-          editionId,
-          responsibility: raChk.dataset.title
-        });
-      } else {
-        raGroup.querySelectorAll('.ap-assign-group').forEach(apGroup => {
-          const apChk = apGroup.querySelector('.chk-ap');
-          if (apChk && apChk.checked) {
+    if (editionId === 'ALL') {
+      const chkAll = backdrop.querySelector('.chk-all-editions');
+      if (chkAll && chkAll.checked) {
+        editions.forEach(ed => {
+          const reformAreas = getSectionsByEdition(ed.id);
+          reformAreas.forEach(ra => {
             assignmentsToCreate.push({
-              type: 'Action Point',
-              sectionId: apChk.dataset.ra,
-              reformAreaId: apChk.dataset.ra,
-              actionPointId: apChk.value,
-              editionId,
-              responsibility: apChk.dataset.title
+              type: 'Reform Area',
+              sectionId: ra.id,
+              reformAreaId: ra.id,
+              editionId: ed.id,
+              responsibility: 'RA: ' + (ra.name || ra.title)
             });
-          } else {
-            apGroup.querySelectorAll('.chk-q:checked').forEach(qChk => {
-              assignmentsToCreate.push({
-                type: 'Question',
-                sectionId: qChk.dataset.ra,
-                reformAreaId: qChk.dataset.ra,
-                actionPointId: qChk.dataset.ap,
-                questionId: qChk.value,
-                fieldId: qChk.value,
-                editionId,
-                responsibility: qChk.dataset.title
-              });
-            });
-          }
+          });
         });
       }
-    });
+    } else {
+      backdrop.querySelectorAll('.ra-assign-group').forEach(raGroup => {
+        const raChk = raGroup.querySelector('.chk-ra');
+        if (raChk && raChk.checked) {
+          assignmentsToCreate.push({
+            type: 'Reform Area',
+            sectionId: raChk.value,
+            reformAreaId: raChk.value,
+            editionId,
+            responsibility: raChk.dataset.title
+          });
+        } else {
+          raGroup.querySelectorAll('.ap-assign-group').forEach(apGroup => {
+            const apChk = apGroup.querySelector('.chk-ap');
+            if (apChk && apChk.checked) {
+              assignmentsToCreate.push({
+                type: 'Action Point',
+                sectionId: apChk.dataset.ra,
+                reformAreaId: apChk.dataset.ra,
+                actionPointId: apChk.value,
+                editionId,
+                responsibility: apChk.dataset.title
+              });
+            } else {
+              apGroup.querySelectorAll('.chk-q:checked').forEach(qChk => {
+                assignmentsToCreate.push({
+                  type: 'Question',
+                  sectionId: qChk.dataset.ra,
+                  reformAreaId: qChk.dataset.ra,
+                  actionPointId: qChk.dataset.ap,
+                  questionId: qChk.value,
+                  fieldId: qChk.value,
+                  editionId,
+                  responsibility: qChk.dataset.title
+                });
+              });
+            }
+          });
+        }
+      });
+    }
 
     if (assignmentsToCreate.length === 0) {
       showToast('Select at least one assignment item.', 'error');
@@ -3748,20 +3715,16 @@ function renderUserSidebar() {
   const unread = getUnreadCount(user.id);
   const unreadMessages = (getDb().messages || []).filter(m => m.receiverId === user.id && !m.read).length;
 
-  const exploreCount = getApplicationsByUser(user.id).filter(a =>
-    ['Draft', 'Submitted', 'Resubmitted', 'Under Review', 'Additional Documents Requested'].includes(a.status)
-  ).length;
-
   const tabs = [
-    { id: 'dashboard',         label: 'My Dashboard',          icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>', badge: '' },
-    { id: 'assigned-editions', label: 'Assigned Editions',     icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
-    { id: 'explore',           label: 'Explore Applications',  icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>', badge: exploreCount > 0 ? String(exploreCount) : '' },
-    { id: 'drafts',            label: 'Drafts',                icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/>', badge: draftCount > 0 ? String(draftCount) : '' },
-    { id: 'approved',          label: 'Approved',              icon: '<circle cx="12" cy="12" r="10"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: '' },
-    { id: 'rejected',          label: 'Rejected',              icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>', badge: '' },
-    { id: 'notifications',     label: 'Notifications',         icon: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>', badge: unread > 0 ? String(unread) : '' },
-    { id: 'messages',          label: 'Messages',              icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
-    { id: 'profile',           label: 'My Profile',            icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', badge: '' }
+    { id: 'dashboard',    label: 'Dashboard',      icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>', badge: '' },
+    { id: 'assigned-editions', label: 'Assigned Editions', icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
+    { id: 'explore',       label: 'Explore Applications', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/>', badge: '' },
+    { id: 'drafts',    label: 'Drafts',          icon: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: draftCount > 0 ? String(draftCount) : '' },
+    { id: 'approved',     label: 'Approved',           icon: '<circle cx="12" cy="12" r="10"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: '' },
+    { id: 'rejected',     label: 'Rejected',           icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>', badge: '' },
+    { id: 'notifications',label: 'Notifications',      icon: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>', badge: unread > 0 ? String(unread) : '' },
+    { id: 'messages',     label: 'Messages',           icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
+    { id: 'profile',      label: 'Profile',         icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', badge: '' }
   ];
 
   let sidebarHtml = tabs.map(t => `
@@ -3866,15 +3829,15 @@ function switchUserTab(tab) {
   mainView.classList.remove('hidden');
 
   switch (tab) {
-    case 'dashboard':         renderUserDashboardEnhanced(mainView); break;
+    case 'dashboard':   renderUserDashboardEnhanced(mainView); break;
     case 'assigned-editions': renderAssignedEditionsPage(mainView); break;
-    case 'explore':           renderExploreApplications(mainView); break;
-    case 'drafts':            renderUserAppsFiltered(mainView, 'Draft'); break;
-    case 'approved':          renderUserAppsFiltered(mainView, 'Approved'); break;
-    case 'rejected':          renderUserAppsFiltered(mainView, 'Rejected'); break;
-    case 'notifications':     renderNotificationsPage(mainView); break;
-    case 'profile':           renderUserProfilePage(mainView); break;
-    case 'messages':          renderMessagesTab(mainView); break;
+    case 'explore':     renderExploreApplications(mainView); break;
+    case 'drafts':      renderUserAppsFiltered(mainView, 'Draft'); break;
+    case 'approved':    renderUserAppsFiltered(mainView, 'Approved'); break;
+    case 'rejected':    renderUserAppsFiltered(mainView, 'Rejected'); break;
+    case 'notifications': renderNotificationsPage(mainView); break;
+    case 'profile':     renderUserProfilePage(mainView); break;
+    case 'messages':    renderMessagesTab(mainView); break;
   }
 }
 
@@ -4113,16 +4076,11 @@ function renderUserDashboard(container) {
   `;
 
   container.querySelector('#notif-alert-banner')?.addEventListener('click', () => switchUserTab('notifications'));
-  container.querySelector('#btn-new-app-dash')?.addEventListener('click', () => switchUserTab('assigned-editions'));
-  container.querySelector('#btn-start-first-app')?.addEventListener('click', () => switchUserTab('assigned-editions'));
+  container.querySelector('#btn-new-app-dash')?.addEventListener('click', () => switchUserTab('apply'));
+  container.querySelector('#btn-start-first-app')?.addEventListener('click', () => switchUserTab('apply'));
 
   container.querySelectorAll('.kpi-card-clickable').forEach(card => {
-    card.addEventListener('click', () => {
-      const tab = card.dataset.tab;
-      activeUserTab = tab;
-      renderUserSidebar();
-      switchUserTab(tab);
-    });
+    card.addEventListener('click', () => switchUserTab(card.dataset.tab));
   });
 
   // Make the entire app card clickable
@@ -4187,8 +4145,10 @@ function renderApplyPage(container) {
     const allSections = getSectionsByEdition(e.id) || [];
     if (allSections.length === 0) return false;
 
-    if (e.status === 'archived') return false;
+    // Must be either published or draft
+    if (e.status !== 'published' && e.status !== 'draft') return false;
 
+    // The user must be assigned to at least one section in this edition
     const sections = allSections.filter(sec => isSectionAssignedToUser(sec, user));
     return sections.length > 0;
   });
@@ -4202,8 +4162,8 @@ function renderApplyPage(container) {
 
     ${publishedEditions.length === 0 ? `
       <div class="empty-state">
-        <h3>No active editions</h3>
-        <p>No SRF editions are currently published and accepting applications. Please check back later.</p>
+        <h3>No active assignments</h3>
+        <p>You have no active assignments or published SRF editions at the moment.</p>
       </div>
     ` : `
       <div class="editions-grid">
@@ -4219,7 +4179,7 @@ function renderApplyPage(container) {
               <div class="edition-card-header">
                 <div class="edition-card-title-row">
                   <div class="edition-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-                  <div><h3 class="edition-name">${ed.name}</h3><p class="edition-desc">${ed.description || ''}</p></div>
+                  <div><h3 class="edition-name">${ed.name} ${ed.status === 'draft' ? '<span style="font-size:12px; color:#f59e0b; background:#fef3c7; padding:2px 6px; border-radius:4px; font-weight:600; margin-left:6px;">Draft Assignment</span>' : ''}</h3><p class="edition-desc">${ed.description || ''}</p></div>
                 </div>
                 ${pendingTasks > 0 ? `<span class="badge" style="background:#ec4899; color:#fff; font-size:11px; padding:3px 8px; border-radius:99px; font-weight:700;">${pendingTasks} Pending</span>` : `<span style="display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.1);color:#10b981;">Active</span>`}
               </div>
@@ -4261,53 +4221,107 @@ function startNewApplication(editionId, container) {
   }
   const app = createApplication(user.id, editionId, category || 'cat_a1', fy);
   addAuditLog(user.id, `Created/opened application for edition ${editionId}`, 'application', app.id);
-  addNotification(user.id, 'DRAFT_SAVED', `Draft application created for "${ed?.name || editionId}". Continue editing from Explore Applications.`, app.id);
-
-  // Redirect to Explore Applications (Drafts tab) instead of opening form directly
-  window.exploreAppsState = window.exploreAppsState || {};
-  window.exploreAppsState.activeTab = 'Drafts';
-  activeUserTab = 'explore';
-  renderUserSidebar();
-  switchUserTab('explore');
-  showToast(`Draft created for "${ed?.name || editionId}". Click Continue to start filling.`, 'success');
+  openApplicationForm(app.id, container);
 }
 
 function renderAssignedEditionsPage(container) {
   const user = getCurrentUser();
   const rawUserAssignments = getAssignments ? getAssignments(user.id) : [];
   const userAssignments = rawUserAssignments.filter(isAssignmentValid);
-
+  
   const assignedEditionIds = [...new Set(userAssignments.map(a => a.editionId))];
   const apps = getApplicationsByUser(user.id);
 
-  // Categorize editions into 3 clean tabs
-  const activeEditions   = []; // No application yet → Start Application
-  const startedEditions  = []; // Draft or Docs Requested → Continue
-  const completedEditions = []; // Submitted, Approved, Rejected → View Submission
+  const activeEditions = [];
+  const inProgressEditions = [];
+  const underReviewEditions = [];
+  const completedEditions = [];
+
+  function createProgressRingHtml(percentage, size = 52, strokeWidth = 5, color = 'var(--accent-indigo)') {
+    const radius = (size - strokeWidth) / 2;
+    const circumference = radius * 2 * Math.PI;
+    const offset = circumference - (Math.min(Math.max(percentage, 0), 100) / 100) * circumference;
+    return `
+      <div class="progress-ring-container" style="width: ${size}px; height: ${size}px; position: relative; display: inline-flex; align-items: center; justify-content: center;">
+        <svg width="${size}" height="${size}" style="transform: rotate(-90deg);">
+          <circle class="progress-ring-track" stroke="rgba(226,232,240,0.12)" stroke-width="${strokeWidth}" fill="transparent" r="${radius}" cx="${size/2}" cy="${size/2}"/>
+          <circle class="progress-ring-circle" stroke="${color}" stroke-width="${strokeWidth}" fill="transparent" r="${radius}" cx="${size/2}" cy="${size/2}"
+                  stroke-dasharray="${circumference} ${circumference}" stroke-dashoffset="${offset}" style="transition: stroke-dashoffset 0.35s;"/>
+        </svg>
+        <span class="progress-ring-text" style="position: absolute; font-size: 11px; font-weight: 700; color: var(--text-main);">${percentage}%</span>
+      </div>
+    `;
+  }
 
   assignedEditionIds.forEach(eid => {
     const ed = getEditionById(eid);
-    if (!ed || ed.status !== 'published') return;
+    if (!ed || (ed.status !== 'published' && ed.status !== 'draft')) return;
 
     const edApps = apps.filter(a => a.editionId === eid);
-    edApps.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    edApps.sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     const app = edApps[0];
 
+    let status = 'Not Started';
+    let actionLabel = 'Start Application';
+    let actionCls = 'btn-primary';
+    let scoreText = '—';
+    let pctText = '—';
+    
+    if (app) {
+      status = app.status;
+      if (status === 'Draft') {
+        actionLabel = 'Continue';
+        actionCls = 'btn-primary';
+      } else if (status === 'Additional Documents Requested') {
+        actionLabel = 'Upload Docs';
+        actionCls = 'btn-primary';
+      } else {
+        actionLabel = 'View Workspace';
+        actionCls = 'btn-outline';
+      }
+      
+      const score = calculateApplicationScore(app.id);
+      const maxScore = calculateApplicationMaxScore(app.id) || 1;
+      const pct = ((score / maxScore) * 100).toFixed(0);
+      const approvedCount = getAnswersByApplication(app.id).filter(a => a.questionStatus === 'Approved').length;
+      const hasAnyScore = score > 0 || approvedCount > 0;
+      const hasBeenReviewed = ['Approved', 'Rejected', 'Additional Documents Requested'].includes(status) || hasAnyScore;
+      
+      if (hasBeenReviewed) {
+        scoreText = `${score} / ${maxScore}`;
+        pctText = `${pct}%`;
+      }
+    }
+
     const editionAssignments = userAssignments.filter(a => a.editionId === eid);
-    const assignedDate = editionAssignments[0]?.createdAt
-      ? new Date(editionAssignments[0].createdAt).toLocaleDateString('en-IN')
+    const assignedDate = editionAssignments[0]?.createdAt 
+      ? new Date(editionAssignments[0].createdAt).toLocaleDateString('en-IN') 
       : (ed.startDate ? new Date(ed.startDate).toLocaleDateString('en-IN') : 'N/A');
-    const dueDate = ed.endDate ? new Date(ed.endDate).toLocaleDateString('en-IN') : 'N/A';
 
-    const cardData = { ed, app, assignedDate, dueDate };
+    const dueDate = ed.endDate 
+      ? new Date(ed.endDate).toLocaleDateString('en-IN') 
+      : 'N/A';
 
-    if (!app) {
+    const cardData = {
+      ed,
+      app,
+      status,
+      actionLabel,
+      actionCls,
+      scoreText,
+      pctText,
+      assignedDate,
+      dueDate
+    };
+
+    if (status === 'Not Started') {
       activeEditions.push(cardData);
-    } else if (app.status === 'Draft' || app.status === 'Additional Documents Requested') {
-      startedEditions.push(cardData);
-    } else {
-      // Submitted, Under Review, Resubmitted, Approved, Rejected
+    } else if (status === 'Draft' || status === 'Additional Documents Requested') {
+      inProgressEditions.push(cardData);
+    } else if (status === 'Approved' || status === 'Rejected') {
       completedEditions.push(cardData);
+    } else {
+      underReviewEditions.push(cardData);
     }
   });
 
@@ -4316,192 +4330,154 @@ function renderAssignedEditionsPage(container) {
   }
   const curTab = window.assignedEditionsFilterTab;
 
-  // Countdown helper
-  const getCountdown = (ed) => {
-    if (!ed.endDate) return { text: 'No deadline', cls: '' };
-    const diff = new Date(ed.endDate) - new Date();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    if (days > 0) return { text: `⏳ ${days} days left`, cls: '' };
-    if (days === 0) return { text: '⏰ Due today', cls: 'color:var(--warning)' };
-    return { text: `🛑 Overdue by ${Math.abs(days)} days`, cls: 'color:var(--danger)' };
-  };
-
-  // Progress helper using required questions
-  const getProgress = (appId, editionId) => {
-    if (!appId) return 0;
-    const prog = calculateApplicationProgress ? calculateApplicationProgress(appId) : null;
-    if (prog && typeof prog.percentage === 'number') return prog.percentage;
-    // fallback
-    const score = calculateApplicationScore(appId) || 0;
-    const max = calculateApplicationMaxScore(appId) || 1;
-    return Math.round((score / max) * 100);
-  };
-
-  // ── Render: Active Assignments ──
-  const renderActiveCard = (c) => {
-    const cd = getCountdown(c.ed);
-    return `
-      <div class="glass-card glass-card-enhanced status-border-blue" style="padding:20px; display:flex; flex-direction:column; gap:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div>
-            <h3 style="font-size:14px; font-weight:700; margin:0 0 4px 0; color:var(--text-main);">${c.ed.name}</h3>
-            <span style="font-size:11px; color:var(--text-muted);">${c.ed.duration || c.ed.version || 'Annual'}</span>
-          </div>
-          <span class="status-badge status-draft" style="font-size:9px;">Not Started</span>
-        </div>
-        <p style="font-size:12.5px; color:var(--text-muted); margin:0; height:36px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${c.ed.description || 'No description available.'}</p>
-        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); padding-top:8px; border-top:1px dashed var(--border-color);">
-          <span>Assigned: <strong>${c.assignedDate}</strong></span>
-          <span style="${cd.cls}">${cd.text}</span>
-        </div>
-        <button class="btn btn-primary btn-sm btn-assigned-action" data-action="start" data-edition-id="${c.ed.id}" style="width:100%; font-weight:600;">
-          ▶ Start Application
-        </button>
-      </div>
-    `;
-  };
-
-  // ── Render: Started (Draft) ──
-  const renderStartedCard = (c) => {
-    const cd = getCountdown(c.ed);
-    const pct = getProgress(c.app?.id, c.ed.id);
-    const lastEdited = c.app?.updatedAt ? _timeAgo(c.app.updatedAt) : 'N/A';
-    const score = calculateApplicationScore(c.app?.id) || 0;
-    const maxScore = calculateApplicationMaxScore(c.app?.id) || 1;
-    const colorCls = c.app?.status === 'Additional Documents Requested' ? 'yellow' : 'orange';
-    const displayStatus = c.app?.status === 'Additional Documents Requested' ? 'Docs Requested' : 'Draft';
-    const statusCls = c.app?.status === 'Additional Documents Requested' ? 'status-add-docs' : 'status-draft';
-    return `
-      <div class="glass-card glass-card-enhanced status-border-${colorCls}" style="padding:20px; display:flex; flex-direction:column; gap:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div>
-            <h3 style="font-size:14px; font-weight:700; margin:0 0 4px 0; color:var(--text-main);">${c.ed.name}</h3>
-            <code style="font-size:10px; color:var(--text-muted); background:rgba(255,255,255,0.04); padding:1px 5px; border-radius:3px;">${c.app?.id || ''}</code>
-          </div>
-          <span class="status-badge ${statusCls}" style="font-size:9px;">${displayStatus}</span>
-        </div>
-        <div>
-          <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); margin-bottom:4px;">
-            <span>Progress</span><strong>${pct}%</strong>
-          </div>
-          <div style="height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
-            <div style="width:${pct}%; height:100%; background:var(--accent-${colorCls}); border-radius:3px;"></div>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted);">
-          <span>Score: <strong>${score} / ${maxScore}</strong></span>
-          <span>Last edited: <strong>${lastEdited}</strong></span>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); padding-top:8px; border-top:1px dashed var(--border-color);">
-          <span>Due: <strong>${c.dueDate}</strong></span>
-          <span style="${cd.cls}">${cd.text}</span>
-        </div>
-        <button class="btn btn-primary btn-sm btn-assigned-action" data-action="continue" data-app-id="${c.app?.id}" style="width:100%; font-weight:600;">
-          ↗ Continue Editing
-        </button>
-      </div>
-    `;
-  };
-
-  // ── Render: Completed ──
-  const renderCompletedCard = (c) => {
-    const userFacingStatus = _userFacingStatus(c.app?.status || '');
-    const statusCls = _statusClass(c.app?.status || '');
-    const score = calculateApplicationScore(c.app?.id) || 0;
-    const maxScore = calculateApplicationMaxScore(c.app?.id) || 1;
-    const pct = Math.round((score / maxScore) * 100);
-    const submittedAt = c.app?.submittedAt ? new Date(c.app.submittedAt).toLocaleDateString('en-IN') : '—';
-    let colorCls = 'purple';
-    if (c.app?.status === 'Approved') colorCls = 'green';
-    else if (c.app?.status === 'Rejected') colorCls = 'red';
-    return `
-      <div class="glass-card glass-card-enhanced status-border-${colorCls}" style="padding:20px; display:flex; flex-direction:column; gap:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div>
-            <h3 style="font-size:14px; font-weight:700; margin:0 0 4px 0; color:var(--text-main);">${c.ed.name}</h3>
-            <code style="font-size:10px; color:var(--text-muted); background:rgba(255,255,255,0.04); padding:1px 5px; border-radius:3px;">${c.app?.id || ''}</code>
-          </div>
-          <span class="status-badge ${statusCls}" style="font-size:9px;">${userFacingStatus}</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted);">
-          <span>Compliance Score: <strong>${score} / ${maxScore} (${pct}%)</strong></span>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); padding-top:8px; border-top:1px dashed var(--border-color);">
-          <span>Submitted: <strong>${submittedAt}</strong></span>
-          <span>Due: <strong>${c.dueDate}</strong></span>
-        </div>
-        ${c.app?.rejectionReason ? `<p style="color:var(--danger);font-size:12px;margin:0;font-style:italic;background:rgba(239,68,68,0.06);padding:8px 12px;border-radius:8px;border-left:3px solid var(--danger);">Reason: "${c.app.rejectionReason}"</p>` : ''}
-        <button class="btn btn-outline btn-sm btn-assigned-action" data-action="view" data-app-id="${c.app?.id}" style="width:100%; font-weight:600;">
-          👁 View Submission
-        </button>
-      </div>
-    `;
-  };
-
   let tabCards = [];
-  let renderCardFn = renderActiveCard;
   let emptyMsg = '';
-
   if (curTab === 'active') {
     tabCards = activeEditions;
-    renderCardFn = renderActiveCard;
-    emptyMsg = `
-      <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
-        <div style="font-size:48px; margin-bottom:16px;">📋</div>
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:8px;">No active assignments</h3>
-        <p style="font-size:13px;">All assigned editions have been started. Check the <strong>Started</strong> tab to continue editing.</p>
-      </div>`;
-  } else if (curTab === 'started') {
-    tabCards = startedEditions;
-    renderCardFn = renderStartedCard;
-    emptyMsg = `
-      <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
-        <div style="font-size:48px; margin-bottom:16px;">📝</div>
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:8px;">No drafts in progress</h3>
-        <p style="font-size:13px;">Start an application from the <strong>Active Assignments</strong> tab to begin.</p>
-      </div>`;
+    emptyMsg = 'No active assignments. All assigned nodal offices have started application drafts.';
+  } else if (curTab === 'inprogress') {
+    tabCards = inProgressEditions;
+    emptyMsg = 'No compliance submissions are currently in progress.';
+  } else if (curTab === 'underreview') {
+    tabCards = underReviewEditions;
+    emptyMsg = 'No compliance submissions are under review.';
   } else {
     tabCards = completedEditions;
-    renderCardFn = renderCompletedCard;
-    emptyMsg = `
-      <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
-        <div style="font-size:48px; margin-bottom:16px;">🏆</div>
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:8px;">No completed submissions yet</h3>
-        <p style="font-size:13px;">Applications will appear here once submitted for review.</p>
-      </div>`;
+    emptyMsg = 'No completed compliance submissions yet.';
   }
 
-  const tabStyle = (id) => `background:none; border:none; border-bottom: 2px solid ${curTab === id ? 'var(--primary)' : 'transparent'}; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600; color:${curTab === id ? 'var(--primary)' : 'var(--text-muted)'}; transition: color 0.2s, border-color 0.2s;`;
+  const renderCard = (c) => {
+    const statusCls = _statusClass(c.status);
+    const appAction = c.status === 'Not Started' 
+      ? `data-action="start" data-edition-id="${c.ed.id}"`
+      : `data-action="open" data-app-id="${c.app.id}"`;
+      
+    let colorCls = 'blue';
+    if (c.status === 'Draft') colorCls = 'orange';
+    else if (c.status === 'Additional Documents Requested') colorCls = 'yellow';
+    else if (['Submitted', 'Resubmitted', 'Under Review'].includes(c.status)) colorCls = 'purple';
+    else if (c.status === 'Approved') colorCls = 'green';
+    else if (c.status === 'Rejected') colorCls = 'red';
+
+    let progressPct = 0;
+    if (c.app) {
+      const score = calculateApplicationScore(c.app.id) || 0;
+      const maxScore = calculateApplicationMaxScore(c.app.id) || 1;
+      progressPct = Math.round((score / maxScore) * 100);
+    }
+
+    // Days remaining calculation
+    let countdownText = 'No deadline';
+    let countdownCls = '';
+    if (c.ed.endDate) {
+      const diff = new Date(c.ed.endDate) - new Date();
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+      if (days > 0) {
+        countdownText = `⏳ ${days} days left`;
+      } else if (days === 0) {
+        countdownText = `⏰ Due today`;
+        countdownCls = 'text-warning';
+      } else {
+        countdownText = `🛑 Overdue by ${Math.abs(days)} days`;
+        countdownCls = 'text-danger';
+      }
+    }
+
+    // Compliance Health Badge label:
+    let healthLabel = 'No Data';
+    let healthClass = 'health-no-data';
+    if (c.app) {
+      if (progressPct >= 80) {
+        healthLabel = 'Excellent Health';
+        healthClass = 'health-excellent';
+      } else if (progressPct >= 50) {
+        healthLabel = 'Good Health';
+        healthClass = 'health-good';
+      } else if (progressPct >= 20) {
+        healthLabel = 'Needs Attention';
+        healthClass = 'health-needs-imp';
+      } else {
+        healthLabel = 'Critical Health';
+        healthClass = 'health-critical';
+      }
+    }
+
+    return `
+      <div class="assigned-edition-card glass-card glass-card-enhanced status-border-${colorCls}" style="padding:20px; display:flex; flex-direction:column; justify-content:space-between; position:relative;">
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="assigned-edition-icon-container" style="background:rgba(99,102,241,0.06); color:var(--primary); padding:6px; border-radius:8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <div>
+                <h3 class="assigned-edition-title" style="font-size:14px; font-weight:700; margin:0; line-height:1.35; color:var(--text-main);">${c.ed.name}</h3>
+                <span style="font-size:11px; color:var(--text-muted);">Duration: ${c.ed.duration || c.ed.version || 'Annual'}</span>
+              </div>
+            </div>
+            <span class="status-badge ${statusCls}" style="font-size:9.5px; font-weight:700; padding:2px 8px; border-radius:99px; text-transform:uppercase;">${c.status}</span>
+          </div>
+
+          <p class="assigned-edition-desc" style="margin-bottom:14px; font-size:12.5px; color:var(--text-muted); height:36px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${c.ed.description || 'No description available.'}</p>
+          
+          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+            ${createProgressRingHtml(progressPct, 48, 4.5, `var(--accent-${colorCls})`)}
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span class="status-badge ${healthClass}" style="font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; text-transform:uppercase; align-self: flex-start;">${healthLabel}</span>
+              <span style="font-size:11px; color:var(--text-muted);">Score: <strong>${c.scoreText}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:auto;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:11.5px; color:var(--text-muted);">
+            <span>Assigned: <strong>${c.assignedDate}</strong></span>
+            <span class="${countdownCls}"><strong>${countdownText}</strong></span>
+          </div>
+          <button class="btn ${c.actionCls} btn-sm btn-assigned-action" style="width:100%; font-weight:600;" ${appAction}>
+            ${c.actionLabel}
+          </button>
+        </div>
+      </div>
+    `;
+  };
 
   container.innerHTML = `
     <div class="section-card" style="margin-bottom:24px;">
       <div class="section-badge" style="background:rgba(79,70,229,0.08);color:var(--accent-indigo);border:1px solid rgba(79,70,229,0.15);">Assigned Editions</div>
       <h1>Assigned Framework Editions</h1>
-      <p style="color:var(--text-muted);font-size:14px;">Editions assigned to your department. Start applications or track their progress below.</p>
+      <p style="color:var(--text-muted);font-size:14px;">All compliance editions assigned to your department. Start or manage submissions below.</p>
     </div>
 
-    <div class="workspace-nav-tabs" style="margin-bottom:24px; display:flex; gap:0; border-bottom: 1px solid var(--border-color); flex-wrap:wrap;">
-      <button class="workspace-tab-link" data-tab="active" style="${tabStyle('active')}">
-        Active Assignments <span style="background:rgba(99,102,241,0.12);color:var(--accent-indigo);font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px;">${activeEditions.length}</span>
+    <div class="workspace-nav-tabs" style="margin-bottom:20px; display:flex; gap:8px; border-bottom: 1px solid var(--border-color); padding-bottom:8px; flex-wrap:wrap;">
+      <button class="workspace-tab-link ${curTab === 'active' ? 'active' : ''}" data-tab="active" style="background:none; border:none; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600; color:${curTab === 'active' ? 'var(--primary)' : 'var(--text-muted)'}; border-bottom:${curTab === 'active' ? '2px solid var(--primary)' : 'none'};">
+        Active Assignments (${activeEditions.length})
       </button>
-      <button class="workspace-tab-link" data-tab="started" style="${tabStyle('started')}">
-        Started <span style="background:rgba(249,115,22,0.12);color:#f97316;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px;">${startedEditions.length}</span>
+      <button class="workspace-tab-link ${curTab === 'inprogress' ? 'active' : ''}" data-tab="inprogress" style="background:none; border:none; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600; color:${curTab === 'inprogress' ? 'var(--primary)' : 'var(--text-muted)'}; border-bottom:${curTab === 'inprogress' ? '2px solid var(--primary)' : 'none'};">
+        In Progress (${inProgressEditions.length})
       </button>
-      <button class="workspace-tab-link" data-tab="completed" style="${tabStyle('completed')}">
-        Completed <span style="background:rgba(16,185,129,0.12);color:#10b981;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px;">${completedEditions.length}</span>
+      <button class="workspace-tab-link ${curTab === 'underreview' ? 'active' : ''}" data-tab="underreview" style="background:none; border:none; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600; color:${curTab === 'underreview' ? 'var(--primary)' : 'var(--text-muted)'}; border-bottom:${curTab === 'underreview' ? '2px solid var(--primary)' : 'none'};">
+        Under Review (${underReviewEditions.length})
+      </button>
+      <button class="workspace-tab-link ${curTab === 'completed' ? 'active' : ''}" data-tab="completed" style="background:none; border:none; padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600; color:${curTab === 'completed' ? 'var(--primary)' : 'var(--text-muted)'}; border-bottom:${curTab === 'completed' ? '2px solid var(--primary)' : 'none'};">
+        Completed (${completedEditions.length})
       </button>
     </div>
 
     <div id="assigned-editions-list-content">
-      ${tabCards.length === 0 ? emptyMsg : `
-        <div class="assigned-editions-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
-          ${tabCards.map(renderCardFn).join('')}
+      ${tabCards.length === 0 ? `
+        <div style="padding: 40px; background: rgba(226,232,240,0.1); border-radius:12px; border:1px dashed var(--border-color); text-align:center; color:var(--text-muted); font-size:14px;">
+          ${emptyMsg}
+        </div>
+      ` : `
+        <div class="assigned-editions-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 20px;">
+          ${tabCards.map(renderCard).join('')}
         </div>
       `}
     </div>
   `;
 
-  // Tab click listeners
+  // Bind subtab clicks
   container.querySelectorAll('.workspace-tab-link').forEach(tab => {
     tab.addEventListener('click', () => {
       window.assignedEditionsFilterTab = tab.dataset.tab;
@@ -4509,23 +4485,23 @@ function renderAssignedEditionsPage(container) {
     });
   });
 
-  // Action button listeners
   container.querySelectorAll('.btn-assigned-action').forEach(btn => {
     btn.addEventListener('click', () => {
       const action = btn.dataset.action;
       if (action === 'start') {
         startNewApplication(btn.dataset.editionId, container);
-      } else if (action === 'continue') {
+      } else if (action === 'open') {
         const appId = btn.dataset.appId;
-        openApplicationForm(appId, container);
-      } else if (action === 'view') {
-        openApplicationDetail(btn.dataset.appId, container);
+        const app = getApplicationById(appId);
+        if (app.status === 'Draft' || app.status === 'Additional Documents Requested') {
+          openApplicationForm(appId, container);
+        } else {
+          openApplicationDetail(appId, container);
+        }
       }
     });
   });
 }
-
-
 
 function isAssignmentValid(a) {
   if (!a) return false;
@@ -4557,11 +4533,15 @@ function isAssignmentValid(a) {
 
 function isSectionAssignedToUser(sec, user) {
   if (user.role === 'admin' || user.role === 'superadmin') return true;
+  const ed = getEditionById(sec.editionId);
+  if (ed && ed.status === 'published') return true;
   return isSectionAssignedToUserStore(sec, user.id);
 }
 
 function isFieldAssignedToUser(f, user) {
   if (user.role === 'admin' || user.role === 'superadmin') return true;
+  const ed = getEditionById(f.editionId);
+  if (ed && ed.status === 'published') return true;
   return isFieldAssignedToUserStore(f, user.id);
 }
 
@@ -4700,7 +4680,7 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
     return;
   }
   const edition = getEditionById(app.editionId);
-  if (!edition || edition.status !== 'published') {
+  if (!edition || (edition.status !== 'published' && edition.status !== 'draft')) {
     showAlert({
       title: 'Edition Unavailable',
       message: 'This edition is currently unavailable.',
@@ -4813,7 +4793,16 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
       const isQuestionApproved = existingAnswer?.questionStatus === 'Approved';
       const isQuestionRejected = existingAnswer?.questionStatus === 'Rejected';
       const isQuestionDocsReq = existingAnswer?.questionStatus === 'Additional Documents Requested' || existingAnswer?.questionStatus === 'Docs Requested';
-      const isQuestionEditable = isAppDraft || isQuestionRejected || isQuestionDocsReq || !isQuestionFilled(existingAnswer, field);
+      
+      let isQuestionEditable = false;
+      if (isAppDraft) {
+        // In draft mode, it is editable UNLESS this specific reform area/question was submitted or approved
+        isQuestionEditable = !isQuestionSubmitted && !isQuestionApproved;
+      } else {
+        // If app is not draft, it's only editable if specifically rejected
+        isQuestionEditable = isQuestionRejected || isQuestionDocsReq;
+      }
+      
       const freezeInputs = !isQuestionEditable;
 
       const inputHtml = renderFieldInput(field, val, freezeInputs, appId);
@@ -5036,20 +5025,28 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
         Dashboard
       </button>
-      <div class="breadcrumbs-container" style="font-size:12.5px;color:var(--text-muted);display:flex;align-items:center;gap:6px;font-family:var(--font-body);">
-        <a href="#" class="breadcrumb-link" data-breadcrumb="dashboard" style="color:var(--primary);text-decoration:none;font-weight:500;transition:color var(--transition-fast);">Dashboard</a>
-        <span>&gt;</span>
-        <a href="#" class="breadcrumb-link" data-breadcrumb="explore" style="color:var(--primary);text-decoration:none;font-weight:500;transition:color var(--transition-fast);">Explore Applications</a>
-        <span>&gt;</span>
-        <span style="color:var(--text-muted);font-weight:500;">${edition?.name}</span>
-        <span>&gt;</span>
+      <div class="breadcrumbs-container" style="font-size:12px;color:var(--text-muted);">
+        <span style="color:var(--primary);font-weight:500;">My Portal</span> /
+        <span style="color:var(--primary);font-weight:500;">${edition?.name}</span> /
         <span style="color:var(--text-main);font-weight:600;">${activeSection?.name || activeSection?.title || ''}</span>
       </div>
       ${isFrozen ? `<span class="status-badge status-submitted" style="margin-left:auto;">${app.status}</span>` : `
         <div style="margin-left:auto;display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" id="btn-save-draft">💾 Save & Exit</button>
-          <button class="btn btn-success-solid btn-sm" id="btn-submit-reform-area">✓ Submit Reform Area</button>
-          <button class="btn btn-primary btn-sm" id="btn-submit-app">Submit Entire Application</button>
+          ${(() => {
+            const allSubmitted = sectionFields.length > 0 && sectionFields.every(f => {
+              const ans = answersMap[f.id];
+              return ans?.questionStatus === 'Submitted' || ans?.questionStatus === 'Approved';
+            });
+            if (allSubmitted) {
+              return `<button class="btn btn-primary btn-sm" id="btn-submit-app">Submit Entire Application</button>`;
+            } else {
+              return `
+                <button class="btn btn-secondary btn-sm" id="btn-save-draft">💾 Save Draft</button>
+                <button class="btn btn-success-solid btn-sm" id="btn-submit-reform-area">✓ Submit Reform Area</button>
+                <button class="btn btn-primary btn-sm" id="btn-submit-app">Submit Entire Application</button>
+              `;
+            }
+          })()}
         </div>
       `}
     </div>
@@ -5103,9 +5100,21 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
 
     ${!isFrozen ? `
       <div style="display:flex;gap:12px;margin-top:24px;justify-content:flex-end;">
-        <button class="btn btn-secondary" id="btn-save-draft-bottom">💾 Save & Exit</button>
-        <button class="btn btn-success-solid" id="btn-submit-reform-area-bottom">✓ Submit Reform Area</button>
-        <button class="btn btn-primary" id="btn-submit-app-bottom">✓ Submit Entire Application</button>
+        ${(() => {
+          const allSubmitted = sectionFields.length > 0 && sectionFields.every(f => {
+            const ans = answersMap[f.id];
+            return ans?.questionStatus === 'Submitted' || ans?.questionStatus === 'Approved';
+          });
+          if (allSubmitted) {
+            return `<button class="btn btn-primary" id="btn-submit-app-bottom">✓ Submit Entire Application</button>`;
+          } else {
+            return `
+              <button class="btn btn-secondary" id="btn-save-draft-bottom">💾 Save Draft</button>
+              <button class="btn btn-success-solid" id="btn-submit-reform-area-bottom">✓ Submit Reform Area</button>
+              <button class="btn btn-primary" id="btn-submit-app-bottom">✓ Submit Entire Application</button>
+            `;
+          }
+        })()}
       </div>
     ` : ''}
   `;
@@ -5517,40 +5526,13 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
     updateApplication(appId, { status: 'Draft' });
     _persistDraftPosition();
     forceSave();
-    showToast('Draft saved successfully! Exiting to Explore Applications.', 'success');
+    showToast('Draft saved!', 'success');
     addNotification(user.id, 'DRAFT_SAVED', `Your application draft has been saved successfully.`, appId);
     addAuditLog(user.id, 'Saved draft application', 'application', appId);
-    
-    // Redirect user to Explore Applications → Drafts tab
-    window.exploreAppsState = window.exploreAppsState || {};
-    window.exploreAppsState.activeTab = 'Drafts';
-    window.workspaceLock = false;
-    activeUserTab = 'explore';
     renderUserSidebar();
-    switchUserTab('explore');
   };
   container.querySelector('#btn-save-draft')?.addEventListener('click', doSaveDraft);
   container.querySelector('#btn-save-draft-bottom')?.addEventListener('click', doSaveDraft);
-
-  // Bind clickable breadcrumbs
-  container.querySelectorAll('.breadcrumb-link').forEach(link => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const target = link.dataset.breadcrumb;
-      window.workspaceLock = false;
-      if (target === 'dashboard') {
-        activeUserTab = 'dashboard';
-        renderUserSidebar();
-        switchUserTab('dashboard');
-      } else if (target === 'explore') {
-        window.exploreAppsState = window.exploreAppsState || {};
-        window.exploreAppsState.activeTab = 'Drafts';
-        activeUserTab = 'explore';
-        renderUserSidebar();
-        switchUserTab('explore');
-      }
-    });
-  });
 
   const doSubmitReformArea = () => {
     const result = submitReformArea(appId, activeSectionId, user.id);
@@ -5674,12 +5656,10 @@ async function openApplicationForm(appId, container, allowRemainingUploads = nul
           `Your application ${appId} has been submitted successfully.`, appId);
         addAuditLog(user.id, 'Submitted application', 'application', appId);
 
-        // Redirect user to Explore Applications → Submitted tab
-        window.exploreAppsState = window.exploreAppsState || {};
-        window.exploreAppsState.activeTab = 'Submitted';
-        activeUserTab = 'explore';
+        // Redirect user tab to "Submitted Applications" page which is 'submitted'
+        activeUserTab = 'submitted';
         renderUserSidebar();
-        switchUserTab('explore');
+        switchUserTab('submitted');
         
         showAlert({
           title: 'Application Submitted!',
@@ -6080,152 +6060,273 @@ function renderFieldInput(field, value, disabled, appId) {
   }
 }
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────────────
-function _userFacingStatus(status) {
-  const map = {
-    'Under Review': 'Submitted', 'Resubmitted': 'Submitted',
-    'Admin Approved': 'Submitted', 'Super Admin Review': 'Submitted',
-    'Final Approved': 'Approved',
-    'Additional Documents Requested': 'Docs Requested',
-  };
-  return map[status] || status;
-}
+window.exploreAppsState = window.exploreAppsState || { tab: 'All', search: '', page: 1, sortBy: 'updatedAt', sortDir: 'desc' };
 
-function _timeAgo(dateStr) {
-  if (!dateStr) return 'N/A';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return 'just now';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + 'm ago';
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + 'h ago';
-  return Math.floor(hours / 24) + 'd ago';
-}
-
-// ─── EXPLORE APPLICATIONS PAGE ─────────────────────────────────────────────────────
 function renderExploreApplications(container) {
   const user = getCurrentUser();
-  if (!window.exploreAppsState) {
-    window.exploreAppsState = { activeTab: 'All', search: '', sortBy: 'updatedAt', sortDir: 'desc' };
-  }
-  const state = window.exploreAppsState;
-
-  const TAB_STATUSES = {
-    'All':            ['Draft', 'Submitted', 'Resubmitted', 'Under Review', 'Additional Documents Requested'],
-    'Drafts':         ['Draft'],
-    'Submitted':      ['Submitted', 'Resubmitted', 'Under Review'],
-    'Docs Requested': ['Additional Documents Requested'],
-  };
+  if (!user) return;
 
   const renderContent = () => {
-    const allApps = getApplicationsByUser(user.id);
-    const filterStatuses = TAB_STATUSES[state.activeTab] || TAB_STATUSES['All'];
-    let apps = allApps.filter(a => filterStatuses.includes(a.status));
+    const { tab, search, page, sortBy, sortDir } = window.exploreAppsState;
+    let allApps = getAllApplications().filter(a => a.userId === user.id);
+    
+    // Only include active working states
+    const workingStates = ['Draft', 'Submitted', 'Resubmitted', 'Additional Documents Requested', 'Under Review'];
+    allApps = allApps.filter(a => workingStates.includes(a.status));
 
-    const q = (state.search || '').toLowerCase().trim();
-    if (q) {
-      apps = apps.filter(a => {
-        const ed = getEditionById(a.editionId);
-        return a.id.toLowerCase().includes(q) ||
-          (ed ? ed.name || '' : '').toLowerCase().includes(q) ||
-          (ed ? ed.framework || '' : '').toLowerCase().includes(q);
-      });
+    // Filter by tab
+    if (tab === 'Drafts') {
+      allApps = allApps.filter(a => a.status === 'Draft');
+    } else if (tab === 'Submitted') {
+      allApps = allApps.filter(a => ['Submitted', 'Resubmitted', 'Under Review'].includes(a.status));
+    } else if (tab === 'Docs Requested') {
+      allApps = allApps.filter(a => a.status === 'Additional Documents Requested');
     }
 
-    apps = apps.slice().sort((a, b) => {
-      const av = a[state.sortBy] || '';
-      const bv = b[state.sortBy] || '';
-      if (av < bv) return state.sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return state.sortDir === 'asc' ? 1 : -1;
+    // search filter
+    if (search.trim()) {
+       const q = search.trim().toLowerCase();
+       allApps = allApps.filter(a => {
+         const ed = getEditionById(a.editionId);
+         const fm = ed ? getFrameworkById(ed.frameworkId) : null;
+         return a.id.toLowerCase().includes(q) || (ed && ed.name.toLowerCase().includes(q)) || (fm && fm.name.toLowerCase().includes(q));
+       });
+    }
+
+    // Sort
+    allApps.sort((a, b) => {
+      let valA = 0;
+      let valB = 0;
+      if (sortBy === 'updatedAt') {
+        valA = new Date(a.updatedAt || a.createdAt).getTime();
+        valB = new Date(b.updatedAt || b.createdAt).getTime();
+      } else if (sortBy === 'id') {
+        valA = a.id;
+        valB = b.id;
+      } else if (sortBy === 'score') {
+        valA = calculateApplicationScore(a.id);
+        valB = calculateApplicationScore(b.id);
+      }
+      if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
 
-    const counts = {};
-    Object.keys(TAB_STATUSES).forEach(function(tab) {
-      counts[tab] = allApps.filter(a => TAB_STATUSES[tab].includes(a.status)).length;
-    });
+    const itemsPerPage = 6;
+    const totalItems = allApps.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    const paginatedApps = allApps.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-    const tStyle = function(id) {
-      return 'background:none;border:none;border-bottom:2px solid ' + (state.activeTab === id ? 'var(--primary)' : 'transparent') + ';padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;color:' + (state.activeTab === id ? 'var(--primary)' : 'var(--text-muted)') + ';transition:color 0.2s,border-color 0.2s;';
-    };
+    const tabsHtml = ['All', 'Drafts', 'Submitted', 'Docs Requested'].map(t => `
+      <div class="sub-tab ${tab === t ? 'active' : ''}" data-tab="${t}" style="cursor:pointer; padding:6px 12px; border-bottom:${tab === t ? '2px solid var(--primary)' : '2px solid transparent'}; font-weight:${tab === t ? '600' : '400'}; color:${tab === t ? 'var(--primary)' : 'var(--text-muted)'};">
+        ${t}
+      </div>
+    `).join('');
 
-    const tabsHtml = Object.keys(TAB_STATUSES).map(function(tab) {
-      return '<button class="explore-tab-link" data-tab="' + tab + '" style="' + tStyle(tab) + '">' + tab + ' <span style="background:rgba(99,102,241,0.1);color:var(--accent-indigo);font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;">' + counts[tab] + '</span></button>';
-    }).join('');
+    const controlsHtml = `
+      <div class="controls-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; gap:12px; align-items:center; flex:1; min-width:300px;">
+          <input type="text" id="apps-search-input" class="form-input" placeholder="Search by Application ID, Edition Name, or Framework..." value="${search}" style="flex:1; max-width:400px; padding-left:36px; background-image:url('data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%236b7280\\' stroke-width=\\'2\\'><circle cx=\\'11\\' cy=\\'11\\' r=\\'8\\'/><line x1=\\'21\\' y1=\\'21\\' x2=\\'16.65\\' y2=\\'16.65\\'/></svg>'); background-repeat:no-repeat; background-position:12px center;">
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div class="custom-sort-dropdown" style="position:relative;">
+            <button class="btn btn-secondary btn-sm" id="apps-sort-trigger" style="padding: 6px 10px; display:flex; align-items:center; gap:6px;">
+              <span>Sort: ${sortBy === 'updatedAt' ? 'Recently Updated' : sortBy === 'id' ? 'Application ID' : 'Score'}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div id="apps-sort-menu" class="custom-sort-menu hidden" style="position:absolute; right:0; top:calc(100% + 4px); background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.1); z-index:100; min-width:200px; padding:6px; flex-direction:column;">
+              <div class="custom-sort-option ${sortBy === 'updatedAt' ? 'active' : ''}" data-value="updatedAt">
+                <div class="option-title" style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-main);"><span>⏱️</span> Recently Updated</div>
+              </div>
+              <div class="custom-sort-option ${sortBy === 'id' ? 'active' : ''}" data-value="id">
+                <div class="option-title" style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-main);"><span>#️⃣</span> Application ID</div>
+              </div>
+              <div class="custom-sort-option ${sortBy === 'score' ? 'active' : ''}" data-value="score">
+                <div class="option-title" style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-main);"><span>🏆</span> Score</div>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-apps-sort-dir" style="padding: 6px 10px;">
+            ${sortDir === 'desc' ? '▼ Desc' : '▲ Asc'}
+          </button>
+        </div>
+      </div>
+    `;
 
-    const cardsHtml = apps.map(function(app) {
+    const cardsHtml = paginatedApps.map(app => {
       const edition = getEditionById(app.editionId);
-      const score = calculateApplicationScore(app.id) || 0;
+      const score = calculateApplicationScore(app.id);
       const maxScore = calculateApplicationMaxScore(app.id) || 1;
+      const pct = ((score / maxScore) * 100).toFixed(1);
       const answers = getAnswersByApplication(app.id);
-      const mandatory = getFieldsByEdition(app.editionId).filter(f => !f.isLayoutElement && f.mandatory);
-      const filled = mandatory.filter(f => { const ans = answers.find(a => a.fieldId === f.id); return ans && ans.value && String(ans.value).trim() !== ''; });
-      const progressPct = mandatory.length > 0 ? Math.round((filled.length / mandatory.length) * 100) : Math.round((score / maxScore) * 100);
-      const pending = mandatory.length - filled.length;
-      const displayStatus = _userFacingStatus(app.status);
-      const statusCls = _statusClass(app.status);
-      let colorCls = 'blue';
-      if (app.status === 'Draft') colorCls = 'gray';
-      else if (['Submitted', 'Resubmitted', 'Under Review'].includes(app.status)) colorCls = 'blue';
-      else if (app.status === 'Additional Documents Requested') colorCls = 'orange';
-      else if (app.status === 'Approved') colorCls = 'green';
-      else if (app.status === 'Rejected') colorCls = 'red';
-      const canEdit = ['Draft', 'Additional Documents Requested'].includes(app.status);
-      const isDraft = app.status === 'Draft';
-      const edName = edition ? edition.name || 'Unknown Edition' : 'Unknown Edition';
-      const createdDate = new Date(app.createdAt).toLocaleDateString('en-IN');
-      const lastEdited = _timeAgo(app.updatedAt);
-      const rejectionHtml = (app.status === 'Rejected' && app.rejectionReason) ? '<p style="color:var(--danger);font-size:12px;margin:0;background:rgba(239,68,68,0.06);padding:8px 10px;border-radius:6px;border-left:3px solid var(--danger);">Reason: &ldquo;' + app.rejectionReason + '&rdquo;</p>' : '';
-      const docsHtml = (app.status === 'Additional Documents Requested' && app.additionalDocsNote) ? '<p style="color:#f97316;font-size:12px;margin:0;background:rgba(249,115,22,0.06);padding:8px 10px;border-radius:6px;border-left:3px solid #f97316;">Action: &ldquo;' + app.additionalDocsNote + '&rdquo;</p>' : '';
-      const continueBtn = canEdit ? '<button class="btn btn-primary btn-xs explore-btn-continue" data-id="' + app.id + '" style="font-weight:600;flex:1;">↗ Continue</button>' : '';
-      const deleteBtn = isDraft ? '<button class="btn btn-danger btn-xs explore-btn-delete" data-id="' + app.id + '" style="font-weight:600;padding:4px 8px;">🗑</button>' : '';
-      return '<div class="glass-card glass-card-enhanced" style="padding:20px;display:flex;flex-direction:column;gap:12px;border-left:3px solid var(--accent-' + colorCls + ');">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;"><code style="font-size:11px;color:var(--text-muted);background:rgba(255,255,255,0.04);padding:2px 6px;border-radius:4px;">' + app.id + '</code><span class="status-badge ' + statusCls + '" style="font-size:9.5px;">' + displayStatus + '</span></div>'
-        + '<div><h3 style="font-size:15px;font-weight:700;margin:0 0 4px;color:var(--text-main);">' + edName + '</h3><p style="font-size:12px;color:var(--text-muted);margin:0;">Created: ' + createdDate + ' · Last edited: ' + lastEdited + '</p></div>'
-        + '<div><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-bottom:5px;"><span>Progress (Required)</span><strong>' + progressPct + '%</strong></div><div style="height:6px;background:var(--border-color);border-radius:3px;overflow:hidden;"><div style="width:' + progressPct + '%;height:100%;background:var(--accent-' + colorCls + ');border-radius:3px;transition:width 0.3s;"></div></div></div>'
-        + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);border-top:1px dashed var(--border-color);padding-top:10px;"><span>Score: <strong>' + score + ' / ' + maxScore + '</strong></span>' + (pending > 0 ? '<span style="color:var(--warning);">⚠ ' + pending + ' pending</span>' : '<span style="color:var(--success);">✓ Complete</span>') + '</div>'
-        + rejectionHtml + docsHtml
-        + '<div style="display:flex;gap:8px;margin-top:auto;">' + continueBtn + '<button class="btn btn-outline btn-xs explore-btn-workspace" data-id="' + app.id + '" style="font-weight:600;flex:1;">👁 Open Workspace</button>' + deleteBtn + '</div>'
-        + '</div>';
+      
+      const fields = getFieldsByEdition(app.editionId).filter(f => !f.isLayoutElement && f.mandatory && isFieldAssignedToUser(f, user));
+      const completedFields = fields.filter(f => {
+        const ans = answers.find(a => a.fieldId === f.id);
+        return isQuestionFilled(ans, f);
+      });
+      const progressPct = fields.length ? Math.round((completedFields.length / fields.length) * 100) : 0;
+      
+      const pendingCount = answers.filter(a => a.questionStatus === 'Submitted').length;
+      const displayStatus = ['Submitted', 'Resubmitted', 'Under Review'].includes(app.status) ? 'Submitted' : app.status;
+
+      let colorCls = 'gray'; // default Draft
+      if (displayStatus === 'Submitted') colorCls = 'blue';
+      else if (displayStatus === 'Additional Documents Requested') colorCls = 'orange';
+      
+      let badgeColor = 'var(--text-muted)';
+      if (colorCls === 'blue') badgeColor = '#3b82f6';
+      if (colorCls === 'orange') badgeColor = '#f97316';
+      
+      return \`
+        <div class="app-summary-card glass-card glass-card-enhanced status-border-\${colorCls}" style="border-left: 4px solid \${badgeColor};">
+          <div class="app-card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <code class="app-id-code" style="font-size:11px;">\${app.id}</code>
+            <span class="status-badge" style="background-color: \${badgeColor}15; color: \${badgeColor}; border: 1px solid \${badgeColor}40;">\${displayStatus}</span>
+          </div>
+          
+          <h3 style="margin:0 0 6px 0; font-size:16px; color:var(--text-main); font-weight:600; line-height:1.4;">
+            \${edition ? edition.name : 'Unknown Edition'}
+          </h3>
+          
+          <div style="display:flex; gap:16px; margin-bottom:16px; font-size:13px;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="color:var(--text-muted);">Progress</span>
+              <span style="font-weight:600; color:var(--text-main);">\${progressPct}% (\${completedFields.length}/\${fields.length})</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; border-left:1px solid var(--border-color); padding-left:16px;">
+              <span style="color:var(--text-muted);">Score</span>
+              <span style="font-weight:600; color:var(--text-main);">\${displayStatus === 'Draft' ? '—' : score}</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; border-left:1px solid var(--border-color); padding-left:16px;">
+              <span style="color:var(--text-muted);">Pending Review</span>
+              <span style="font-weight:600; color:var(--text-main);">\${pendingCount} items</span>
+            </div>
+          </div>
+          
+          <div class="app-card-footer" style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-color); padding-top:12px; margin-top:auto;">
+            <span class="last-updated" style="font-size:11.5px; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              \${formatDate(app.updatedAt || app.createdAt)}
+            </span>
+            <div style="display:flex; gap:8px;">
+              \${app.status === 'Draft' ? \`<button class="btn btn-danger-solid btn-sm" onclick="deleteUserApplication('\${app.id}')" title="Delete Draft" style="padding: 6px; background-color: #ef4444;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>\` : ''}
+              <button class="btn btn-primary btn-sm" onclick="openApplicationForm('\${app.id}')">Continue</button>
+            </div>
+          </div>
+        </div>
+      \`;
     }).join('');
 
-    const emptyMsg = q
-      ? 'Try a different search term.'
-      : 'Go to <strong>Assigned Editions → Active Assignments</strong> and click <strong>Start Application</strong>.';
+    let paginationHtml = '';
+    if (totalPages > 1) {
+      paginationHtml = \`
+        <div style="display:flex; justify-content:center; align-items:center; gap:16px; margin-top:28px; font-family:var(--font-title); font-size:13px;">
+          <button class="btn btn-secondary btn-sm" id="btn-apps-prev" \${page === 1 ? 'disabled' : ''}>← Previous</button>
+          <span>Page <strong>\${page}</strong> of <strong>\${totalPages}</strong></span>
+          <button class="btn btn-secondary btn-sm" id="btn-apps-next" \${page === totalPages ? 'disabled' : ''}>Next →</button>
+        </div>
+      \`;
+    }
 
-    container.innerHTML = '<div class="section-card" style="margin-bottom:24px;"><div class="section-badge" style="background:rgba(79,70,229,0.08);color:var(--accent-indigo);border:1px solid rgba(79,70,229,0.15);">Explore Applications</div><h1>Explore Applications</h1><p style="color:var(--text-muted);font-size:14px;">Your working area. All applications created from assigned editions are tracked here.</p></div>'
-      + '<div style="display:flex;gap:0;border-bottom:1px solid var(--border-color);margin-bottom:20px;flex-wrap:wrap;">' + tabsHtml + '</div>'
-      + '<div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;"><div style="flex:1;min-width:240px;position:relative;"><input type="text" id="explore-search" class="form-input" placeholder="Search by App ID, Edition Name, or Framework..." value="' + (state.search || '') + '" style="padding-left:34px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>'
-      + '<select id="explore-sort" class="form-input" style="width:200px;font-size:13px;"><option value="updatedAt"' + (state.sortBy === 'updatedAt' ? ' selected' : '') + '>Recently Updated</option><option value="createdAt"' + (state.sortBy === 'createdAt' ? ' selected' : '') + '>Recently Created</option><option value="editionId"' + (state.sortBy === 'editionId' ? ' selected' : '') + '>Alphabetical</option></select>'
-      + '<button id="explore-sort-dir" class="btn btn-secondary btn-sm">' + (state.sortDir === 'desc' ? '▼ Desc' : '▲ Asc') + '</button></div>'
-      + (apps.length === 0
-        ? '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:16px;">📂</div><h3 style="font-size:16px;font-weight:700;margin-bottom:8px;">No applications found</h3><p style="font-size:13px;">' + emptyMsg + '</p></div>'
-        : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;">' + cardsHtml + '</div>');
+    container.innerHTML = \`
+      <div class="breadcrumbs-container" style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+        <span style="color:var(--primary);font-weight:500;">Dashboard</span> &gt;
+        <span style="color:var(--text-main);font-weight:600;">Explore Applications</span>
+      </div>
+      <div class="section-card" style="margin-bottom:24px;">
+        <div class="section-badge" style="background:rgba(79,70,229,0.08);color:var(--accent-indigo);border:1px solid rgba(79,70,229,0.15);">Workspace</div>
+        <h1>Explore Applications</h1>
+        <p style="color:var(--text-muted);font-size:14px;">Manage your active applications across different editions.</p>
+      </div>
 
-    container.querySelectorAll('.explore-tab-link').forEach(function(btn) { btn.addEventListener('click', function() { state.activeTab = btn.dataset.tab; renderContent(); }); });
-    var searchEl = container.querySelector('#explore-search');
-    if (searchEl) searchEl.addEventListener('input', function(e) { state.search = e.target.value; renderContent(); var inp = container.querySelector('#explore-search'); if (inp) { inp.focus(); var v = inp.value; inp.value = ''; inp.value = v; } });
-    var sortEl = container.querySelector('#explore-sort');
-    if (sortEl) sortEl.addEventListener('change', function(e) { state.sortBy = e.target.value; renderContent(); });
-    var sortDirEl = container.querySelector('#explore-sort-dir');
-    if (sortDirEl) sortDirEl.addEventListener('click', function() { state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc'; renderContent(); });
-    container.querySelectorAll('.explore-btn-continue').forEach(function(btn) { btn.addEventListener('click', function() { openApplicationForm(btn.dataset.id, container); }); });
-    container.querySelectorAll('.explore-btn-workspace').forEach(function(btn) { btn.addEventListener('click', function() { openApplicationDetail(btn.dataset.id, container); }); });
-    container.querySelectorAll('.explore-btn-delete').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        const confirmed = await showConfirm({ title: 'Delete Draft', message: 'Permanently delete this draft? This cannot be undone.', type: 'danger' });
-        if (!confirmed) return;
-        const db = getDb();
-        const idx = db.applications.findIndex(function(a) { return a.id === btn.dataset.id; });
-        if (idx !== -1) { db.applications.splice(idx, 1); await forceSave(); renderUserSidebar(); showToast('Draft deleted.', 'success'); renderContent(); }
+      <div style="display:flex; gap:16px; margin-bottom:24px; border-bottom:1px solid var(--border-color);">
+        \${tabsHtml}
+      </div>
+
+      \${controlsHtml}
+
+      \${totalItems === 0 ? \`
+        <div class="empty-state">
+          <svg style="width:48px;height:48px;color:var(--text-muted);margin-bottom:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <h3>No applications found</h3>
+          <p>You have no applications in the "\${tab}" state.</p>
+        </div>
+      \` : \`
+        <div class="app-cards-grid">\${cardsHtml}</div>
+        \${paginationHtml}
+      \`}
+    \`;
+
+    // Event listeners for tabs
+    container.querySelectorAll('.sub-tab').forEach(el => {
+      el.addEventListener('click', (e) => {
+        window.exploreAppsState.tab = e.target.dataset.tab;
+        window.exploreAppsState.page = 1;
+        renderContent();
       });
     });
+
+    container.querySelector('#apps-search-input')?.addEventListener('input', (e) => {
+      window.exploreAppsState.search = e.target.value;
+      window.exploreAppsState.page = 1;
+      renderContent();
+      const inp = container.querySelector('#apps-search-input');
+      inp.focus();
+      const val = inp.value;
+      inp.value = '';
+      inp.value = val;
+    });
+
+    // Trigger toggle click
+    container.querySelector('#apps-sort-trigger')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.querySelector('#apps-sort-menu')?.classList.toggle('hidden');
+    });
+    
+    // Sort options
+    container.querySelectorAll('#apps-sort-menu .custom-sort-option').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.exploreAppsState.sortBy = e.currentTarget.dataset.value;
+        container.querySelector('#apps-sort-menu')?.classList.add('hidden');
+        renderContent();
+      });
+    });
+
+    // Sort direction toggle
+    container.querySelector('#btn-apps-sort-dir')?.addEventListener('click', () => {
+      window.exploreAppsState.sortDir = window.exploreAppsState.sortDir === 'asc' ? 'desc' : 'asc';
+      renderContent();
+    });
+
+    // Pagination
+    container.querySelector('#btn-apps-prev')?.addEventListener('click', () => {
+      if (window.exploreAppsState.page > 1) {
+        window.exploreAppsState.page--;
+        renderContent();
+      }
+    });
+    container.querySelector('#btn-apps-next')?.addEventListener('click', () => {
+      if (window.exploreAppsState.page < totalPages) {
+        window.exploreAppsState.page++;
+        renderContent();
+      }
+    });
+
+    // Hide sort menu on outside click
+    document.addEventListener('click', () => {
+      const menu = container.querySelector('#apps-sort-menu');
+      if (menu && !menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+      }
+    }, { once: true });
   };
 
   renderContent();
 }
-
 // ─── USER APPS (filtered by status) ───────────────────────────────────────
 function renderUserAppsFiltered(container, status) {
   const user = getCurrentUser();
@@ -6392,11 +6493,16 @@ function renderUserAppsFiltered(container, status) {
 
     const titleMap = {
       'Draft': 'Draft Applications',
-      'Submitted': 'In Review Applications',
-      'Approved': 'Approved & Certified Applications',
-      'Rejected': 'Rejected Compliance Applications'
+      'Approved': 'Approved Applications',
+      'Rejected': 'Rejected Applications'
+    };
+    const emptyMap = {
+      'Draft': 'No draft applications.',
+      'Approved': 'No approved applications.',
+      'Rejected': 'No rejected applications.'
     };
     const currentTitle = titleMap[status] || `${status} Applications`;
+    const emptyMessage = emptyMap[status] || `No ${status.toLowerCase()} applications.`;
 
     const cardsHtml = paginatedApps.map(app => {
       const edition = getEditionById(app.editionId);
@@ -6486,8 +6592,7 @@ function renderUserAppsFiltered(container, status) {
 
       ${totalItems === 0 ? `
         <div class="empty-state">
-          <h3>No applications found</h3>
-          <p>Try refining your search or status filter options.</p>
+          <h3>${emptyMessage}</h3>
         </div>
       ` : `
         <div class="app-cards-grid">${cardsHtml}</div>
@@ -7127,12 +7232,6 @@ window.setActiveEditionId = (id) => { activeEditionId = id; };
 window.switchUserTab = switchUserTab;
 window.openApplicationForm = openApplicationForm;
 window.openApplicationDetail = openApplicationDetail;
-window.renderUserSidebar = renderUserSidebar;
-Object.defineProperty(window, 'activeUserTab', {
-  get: () => activeUserTab,
-  set: (v) => { activeUserTab = v; },
-  configurable: true
-});
 
 // ─── STATUS LABEL (abbreviated for cards) ──────────────────────────────────
 function _statusLabel(status) {
@@ -7546,6 +7645,11 @@ function renderAssignedDetailsPanel(container) {
     // Filter out system-published whole-document assignments (auto-assigned when super admin publishes)
     if (!a.assignedBy || a.assignedBy === 'system' || a.assignedBy === 'System') return false;
     if (!userIdSet.has(a.assignedBy)) return false;
+    
+    // Only show assignments for Unpublished editions
+    const ed = getEditionById(a.editionId);
+    if (!ed || ed.status === 'published') return false;
+    
     return true;
   });
   
@@ -8327,11 +8431,9 @@ function renderMessagesTab(container) {
     clearInterval(window.chatPollingInterval);
   }
 
-  // Filter contacts (Admins/Superadmins see Users; Users see Admins/Superadmins)
+  // Filter contacts (Everyone can see everyone else)
   const allUsers = getUsers();
-  const contacts = (currentUser.role === 'superadmin' || currentUser.role === 'admin')
-    ? allUsers.filter(u => u.role === 'user')
-    : allUsers.filter(u => u.role === 'admin' || u.role === 'superadmin');
+  const contacts = allUsers.filter(u => u.id !== currentUser.id && u.active !== false && u.status !== 'deleted');
 
   container.innerHTML = `
     <div class="chat-wrapper" style="margin-top:20px;">

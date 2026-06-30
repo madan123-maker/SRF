@@ -382,7 +382,7 @@ export function renderUserDashboardEnhanced(container) {
   const rawUserAssignments = Store.getAssignments ? Store.getAssignments(user.id) : [];
   const userAssignments = rawUserAssignments.filter(a => {
     const ed = Store.getEditionById(a.editionId);
-    return ed && !ed.isDeleted && ed.status === 'published';
+    return ed && !ed.isDeleted && ed.status !== 'archived';
   });
 
   const uniqueAssignedEditionIds = [...new Set(userAssignments.map(a => a.editionId))];
@@ -500,15 +500,19 @@ export function renderUserDashboardEnhanced(container) {
   }
 
   // Total editions in the system (dynamic, from DB)
-  const totalEditions = (Store.getEditions ? Store.getEditions() : []).filter(e => !e.isDeleted && e.status === 'published').length;
+  const totalEditions = (Store.getEditions ? Store.getEditions() : []).filter(e => !e.isDeleted && e.status !== 'archived').length;
 
   const submittedTasks = apps.filter(a => ['Submitted', 'Resubmitted', 'Under Review', 'Admin Approved', 'Super Admin Review', 'Final Approved'].includes(a.status));
+  const pendingActionsCount = draftApps.length + docsReqApps.length;
 
-  // Row 1: Executive KPI Cards (3-column responsive layout)
+  // Row 1: Executive KPI Cards — 6 cards matching spec
   const kpis = [
-    { label: 'Assigned Tasks', val: userAssignments.length, desc: 'Allocated reform areas / questions.', class: 'blue', tab: 'assigned-editions', icon: '⚡' },
-    { label: 'Drafts', val: draftApps.length, desc: 'Active drafts in preparation.', class: 'orange', tab: 'drafts', icon: '📝' },
-    { label: 'Submitted Tasks', val: submittedTasks.length, desc: 'Submissions pending/completed.', class: 'green', tab: 'submitted', icon: '✓' }
+    { label: 'Assigned Editions',       val: userAssignments.length,    desc: 'Editions assigned to your department.',    class: 'blue',   tab: 'assigned-editions', icon: '⚡' },
+    { label: 'Draft Applications',       val: draftApps.length,         desc: 'Active drafts awaiting submission.',         class: 'gray',   tab: 'drafts',            icon: '📝' },
+    { label: 'Submitted Applications',   val: submittedTasks.length,    desc: 'Submitted and under admin review.',          class: 'blue',   tab: 'explore',           icon: '📤' },
+    { label: 'Approved',                 val: approvedApps.length,      desc: 'Applications approved and certified.',       class: 'green',  tab: 'approved',          icon: '✅' },
+    { label: 'Rejected',                 val: rejectedApps.length,      desc: 'Applications that were rejected.',           class: 'red',    tab: 'rejected',          icon: '❌' },
+    { label: 'Pending Actions',          val: pendingActionsCount,      desc: 'Drafts + docs requested needing attention.', class: 'orange', tab: 'explore',           icon: '⚠️' },
   ];
 
   const kpisHtml = `
@@ -850,7 +854,9 @@ export function renderUserDashboardEnhanced(container) {
       } else if (type === 'workspace') {
         renderTabbedApplicationWorkspace(container, id);
       } else if (type === 'explore') {
-        window.switchUserTab('assigned-editions');
+        window.activeUserTab = 'explore';
+        window.renderUserSidebar();
+        window.switchUserTab('explore');
       } else if (type === 'notifications') {
         window.switchUserTab('notifications');
       } else if (type === 'profile') {
@@ -858,6 +864,20 @@ export function renderUserDashboardEnhanced(container) {
       }
     });
   });
+
+  // Bind KPI card clicks to navigate to corresponding sidebar tabs
+  container.querySelectorAll('[data-tab]').forEach(card => {
+    if (card.tagName !== 'BUTTON') {
+      card.addEventListener('click', () => {
+        const tab = card.dataset.tab;
+        if (!tab || !window.switchUserTab) return;
+        window.activeUserTab = tab;
+        if (window.renderUserSidebar) window.renderUserSidebar();
+        window.switchUserTab(tab);
+      });
+    }
+  });
+
 
   // Bind Open Folder Buttons
   container.querySelectorAll('.btn-open-folder').forEach(btn => {
@@ -1693,7 +1713,25 @@ export function renderTabbedApplicationWorkspace(container, appId) {
 let currentAnalyticsEditionId = null;
 
 // ─── ADMIN ANALYTICS DASHBOARD ──────────────────────────────────────────────
-export function renderAdminAnalyticsDashboard(container) {
+export async function renderAdminAnalyticsDashboard(container) {
+  // Show a loading indicator while fetching the latest db state from server
+  container.innerHTML = `
+    <div class="empty-state" style="padding: 40px; text-align: center;">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-indigo)" stroke-width="2" style="animation:spin 1s linear infinite; margin-bottom:12px; display:inline-block;">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+      <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Refreshing Platform Intel...</h3>
+      <p style="color: var(--text-muted); font-size: 14px;">Fetching latest application states from the server...</p>
+    </div>
+  `;
+
+  try {
+    await Store.initStore();
+  } catch (e) {
+    console.warn('[Dashboard] Could not refresh DB from server:', e);
+  }
+
   const db = Store.getDb();
   if (!db) {
     container.innerHTML = `
@@ -1704,7 +1742,7 @@ export function renderAdminAnalyticsDashboard(container) {
     `;
     return;
   }
-  const editions = (Store.getEditions() || []).filter(e => e.status === 'published' && !e.isDeleted);
+  const editions = (Store.getEditions() || []).filter(e => e.status !== 'archived' && !e.isDeleted);
   
   if (!currentAnalyticsEditionId && editions.length > 0) {
     currentAnalyticsEditionId = editions[0]?.id;
@@ -1974,7 +2012,7 @@ export function renderAdminAnalyticsDashboard(container) {
         <h2>📊 District-wise Application Status</h2>
       </div>
       <div class="card-body" style="padding:20px;">
-        <div class="chart-container-wrap" style="height: 320px; position: relative;">
+        <div class="chart-container-wrap" style="height: 380px; position: relative;">
           <canvas id="admin-district-bar-graph"></canvas>
         </div>
       </div>
@@ -2100,83 +2138,95 @@ export function renderAdminAnalyticsDashboard(container) {
     // 3. District-wise Application Status Bar Graph (Elegant Grouped)
     const ctxDistrictBar = document.getElementById('admin-district-bar-graph')?.getContext('2d');
     if (ctxDistrictBar) {
-      // Group applications by district
+      // Group applications by district — use a smart label fallback:
+      // prefer district if it's a real name (not just "District"), else try city, then organization, then state
       const districtGroups = {};
       allFilteredApps.forEach(app => {
         const appUser = (db.users || []).find(u => u.id === app.userId);
-        const district = appUser?.district || appUser?.state || appUser?.organization || 'Unknown';
-        if (!districtGroups[district]) {
-          districtGroups[district] = { draft: 0, submitted: 0, approved: 0, rejected: 0 };
+        const rawDistrict = (appUser?.district || '').trim();
+        const rawOrg = (appUser?.organization || '').trim();
+        const rawState = (appUser?.state || '').trim();
+        const rawCity = (appUser?.city || '').trim();
+        // Skip generic placeholder values
+        const isGeneric = (v) => !v || ['district', 'n/a', 'na', 'none', 'unknown', 'org', 'organization'].includes(v.toLowerCase());
+        let label = rawDistrict;
+        if (isGeneric(label)) label = rawCity;
+        if (isGeneric(label)) label = rawOrg;
+        if (isGeneric(label)) label = rawState;
+        if (isGeneric(label)) label = appUser?.name || 'Unknown';
+        if (!districtGroups[label]) {
+          districtGroups[label] = { draft: 0, submitted: 0, approved: 0, rejected: 0 };
         }
-        if (app.status === 'Draft') districtGroups[district].draft++;
-        else if (['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(app.status)) districtGroups[district].submitted++;
-        else if (['Admin Approved', 'Final Approved', 'Approved'].includes(app.status)) districtGroups[district].approved++;
-        else if (app.status === 'Rejected') districtGroups[district].rejected++;
+        if (app.status === 'Draft') districtGroups[label].draft++;
+        else if (['Submitted', 'Under Review', 'Resubmitted', 'Additional Documents Requested'].includes(app.status)) districtGroups[label].submitted++;
+        else if (['Admin Approved', 'Final Approved', 'Approved'].includes(app.status)) districtGroups[label].approved++;
+        else if (app.status === 'Rejected') districtGroups[label].rejected++;
       });
-      
+
       const districtLabels = Object.keys(districtGroups);
 
-      // Create gradient fills for each dataset
-      const createGradient = (ctx, startColor, endColor) => {
-        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
-        gradient.addColorStop(0, startColor);
-        gradient.addColorStop(1, endColor);
-        return gradient;
+      // Wrap long labels so they don't clip
+      const wrapLabel = (label, maxLen = 14) => {
+        if (label.length <= maxLen) return label;
+        const words = label.split(' ');
+        const lines = [];
+        let cur = '';
+        words.forEach(w => {
+          if ((cur + ' ' + w).trim().length > maxLen) { lines.push(cur.trim()); cur = w; }
+          else { cur = (cur + ' ' + w).trim(); }
+        });
+        if (cur) lines.push(cur);
+        return lines;
       };
 
-      const draftGradient = createGradient(ctxDistrictBar, 'rgba(99, 102, 241, 0.9)', 'rgba(99, 102, 241, 0.3)');
-      const submittedGradient = createGradient(ctxDistrictBar, 'rgba(245, 158, 11, 0.9)', 'rgba(245, 158, 11, 0.3)');
-      const approvedGradient = createGradient(ctxDistrictBar, 'rgba(16, 185, 129, 0.9)', 'rgba(16, 185, 129, 0.3)');
-      const rejectedGradient = createGradient(ctxDistrictBar, 'rgba(239, 68, 68, 0.9)', 'rgba(239, 68, 68, 0.3)');
-      
       new Chart(ctxDistrictBar, {
         type: 'bar',
         data: {
-          labels: districtLabels,
+          labels: districtLabels.map(l => wrapLabel(l)),
           datasets: [
             {
               label: 'Draft',
               data: districtLabels.map(d => districtGroups[d].draft),
-              backgroundColor: draftGradient,
-              borderColor: 'rgba(99, 102, 241, 1)',
+              backgroundColor: 'rgba(107, 114, 128, 0.75)',
+              borderColor: 'rgba(107, 114, 128, 1)',
               borderWidth: 0,
-              borderRadius: 6,
+              borderRadius: { topLeft: 5, topRight: 5 },
               borderSkipped: false,
-              barPercentage: 0.7,
-              categoryPercentage: 0.65
+              barPercentage: 0.72,
+              categoryPercentage: 0.6
             },
             {
               label: 'Submitted',
               data: districtLabels.map(d => districtGroups[d].submitted),
-              backgroundColor: submittedGradient,
-              borderColor: 'rgba(245, 158, 11, 1)',
+              backgroundColor: 'rgba(59, 130, 246, 0.75)',
+              borderColor: 'rgba(59, 130, 246, 1)',
               borderWidth: 0,
-              borderRadius: 6,
+              borderRadius: { topLeft: 5, topRight: 5 },
               borderSkipped: false,
-              barPercentage: 0.7,
-              categoryPercentage: 0.65
+              barPercentage: 0.72,
+              categoryPercentage: 0.6
             },
             {
               label: 'Approved',
               data: districtLabels.map(d => districtGroups[d].approved),
-              backgroundColor: approvedGradient,
+              backgroundColor: 'rgba(16, 185, 129, 0.75)',
               borderColor: 'rgba(16, 185, 129, 1)',
               borderWidth: 0,
-              borderRadius: 6,
+              borderRadius: { topLeft: 5, topRight: 5 },
               borderSkipped: false,
-              barPercentage: 0.7,
-              categoryPercentage: 0.65
+              barPercentage: 0.72,
+              categoryPercentage: 0.6
             },
             {
               label: 'Rejected',
               data: districtLabels.map(d => districtGroups[d].rejected),
-              backgroundColor: rejectedGradient,
+              backgroundColor: 'rgba(239, 68, 68, 0.75)',
               borderColor: 'rgba(239, 68, 68, 1)',
               borderWidth: 0,
-              borderRadius: 6,
+              borderRadius: { topLeft: 5, topRight: 5 },
               borderSkipped: false,
-              barPercentage: 0.7,
-              categoryPercentage: 0.65
+              barPercentage: 0.72,
+              categoryPercentage: 0.6
             }
           ]
         },
@@ -2188,9 +2238,9 @@ export function renderAdminAnalyticsDashboard(container) {
             legend: {
               position: 'bottom',
               labels: {
-                boxWidth: 14,
-                boxHeight: 14,
-                borderRadius: 4,
+                boxWidth: 12,
+                boxHeight: 12,
+                borderRadius: 3,
                 useBorderRadius: true,
                 font: { size: 12, family: 'Inter, system-ui, sans-serif', weight: '500' },
                 padding: 20,
@@ -2219,15 +2269,17 @@ export function renderAdminAnalyticsDashboard(container) {
               ticks: {
                 font: { size: 12, weight: '500', family: 'Inter, system-ui, sans-serif' },
                 color: '#475569',
-                maxRotation: 35,
-                padding: 8
+                maxRotation: 30,
+                minRotation: 0,
+                padding: 8,
+                autoSkip: false
               },
               border: { display: false }
             },
             y: {
               beginAtZero: true,
               grid: {
-                color: 'rgba(148, 163, 184, 0.12)',
+                color: 'rgba(148, 163, 184, 0.1)',
                 drawBorder: false,
                 lineWidth: 1
               },

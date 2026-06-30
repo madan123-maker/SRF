@@ -1928,6 +1928,13 @@ export function saveAnswer(appId, fieldId, value, files = []) {
       updatedAt: new Date().toISOString(),
     });
   }
+
+  // Touch application updatedAt so "Last Updated" reflects edits immediately
+  const parentApp = _db.applications.find(a => a.id === appId);
+  if (parentApp) {
+    parentApp.updatedAt = new Date().toISOString();
+  }
+
   scheduleSave();
 }
 
