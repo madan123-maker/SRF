@@ -2319,7 +2319,34 @@ function openCreateAdminModal(container) {
 function openAssignmentModal(userId, container) {
   const user = getUserById(userId);
   const editions = getEditions().filter(e => e.status !== 'archived' && !e.isDeleted);
-  const currentAssignments = getAssignments(userId);
+  const rawAssignments = getAssignments(userId);
+
+  const currentAssignments = [];
+  const assignmentsByEdition = {};
+  rawAssignments.forEach(a => {
+    if (!assignmentsByEdition[a.editionId]) assignmentsByEdition[a.editionId] = [];
+    assignmentsByEdition[a.editionId].push(a);
+  });
+
+  Object.keys(assignmentsByEdition).forEach(editionId => {
+    const editionAssignments = assignmentsByEdition[editionId];
+    const totalReformAreas = getSectionsByEdition(editionId).length;
+    const raAssigned = editionAssignments.filter(a => a.type === 'Reform Area');
+    const hasFullEditionAssigned = editionAssignments.some(a => a.type === 'Edition');
+    
+    if (hasFullEditionAssigned || (raAssigned.length >= totalReformAreas && totalReformAreas > 0)) {
+      const ed = getEditionById(editionId);
+      currentAssignments.push({
+        isGrouped: true,
+        groupedIds: editionAssignments.map(a => a.id).join(','),
+        type: 'Edition',
+        responsibility: 'Full SRF Edition (' + (ed?.name || 'Edition') + ')',
+        editionId
+      });
+    } else {
+      currentAssignments.push(...editionAssignments);
+    }
+  });
 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
@@ -2370,7 +2397,7 @@ function openAssignmentModal(userId, container) {
                   <strong style="color:var(--text-main);">${displayTitle}</strong>
                   <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Type: ${a.type || 'General'}</div>
                 </div>
-                <button class="btn btn-xs btn-danger btn-remove-assign" data-id="${a.id}">Remove</button>
+                <button class="btn btn-xs btn-danger btn-remove-assign" data-id="${a.id}" ${a.isGrouped ? `data-grouped-ids="${a.groupedIds}"` : ''}>Remove</button>
               </div>
             `;
           }).join('')}
@@ -2392,7 +2419,15 @@ function openAssignmentModal(userId, container) {
     const listEl = backdrop.querySelector('#assign-sections-list');
     
     if (reformAreas.length === 0) {
-      listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">No reform areas found for this edition.</div>';
+      listEl.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;border: 1px dashed var(--border-color);border-radius: 8px;">
+          No reform areas found for this edition.<br><br>
+          <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px;padding:8px 16px;background:var(--bg-secondary);border-radius:6px;">
+            <input type="checkbox" id="assign-full-edition-empty" class="form-checkbox" value="full">
+            <span style="font-weight:600;color:var(--text-main);">Assign Full Edition Anyway</span>
+          </label>
+        </div>
+      `;
       return;
     }
 
@@ -2498,8 +2533,13 @@ function openAssignmentModal(userId, container) {
 
   backdrop.querySelectorAll('.btn-remove-assign').forEach(btn => {
     btn.addEventListener('click', () => {
-      removeAssignment(btn.dataset.id);
-      showToast('Assignment removed.', 'info');
+      if (btn.dataset.groupedIds) {
+        const ids = btn.dataset.groupedIds.split(',');
+        ids.forEach(id => removeAssignment(id));
+      } else {
+        removeAssignment(btn.dataset.id);
+      }
+      showToast('Assignment(s) removed.', 'info');
       backdrop.remove();
       openAssignmentModal(userId, container);
     });
@@ -2509,46 +2549,55 @@ function openAssignmentModal(userId, container) {
     const editionId = backdrop.querySelector('#assign-edition').value;
     
     const assignmentsToCreate = [];
-    
-    backdrop.querySelectorAll('.ra-assign-group').forEach(raGroup => {
-      const raChk = raGroup.querySelector('.chk-ra');
-      if (raChk && raChk.checked) {
-        assignmentsToCreate.push({
-          type: 'Reform Area',
-          sectionId: raChk.value,
-          reformAreaId: raChk.value,
-          editionId,
-          responsibility: raChk.dataset.title
-        });
-      } else {
-        raGroup.querySelectorAll('.ap-assign-group').forEach(apGroup => {
-          const apChk = apGroup.querySelector('.chk-ap');
-          if (apChk && apChk.checked) {
-            assignmentsToCreate.push({
-              type: 'Action Point',
-              sectionId: apChk.dataset.ra,
-              reformAreaId: apChk.dataset.ra,
-              actionPointId: apChk.value,
-              editionId,
-              responsibility: apChk.dataset.title
-            });
-          } else {
-            apGroup.querySelectorAll('.chk-q:checked').forEach(qChk => {
+    const emptyAssignCheckbox = backdrop.querySelector('#assign-full-edition-empty');
+
+    if (emptyAssignCheckbox && emptyAssignCheckbox.checked) {
+      assignmentsToCreate.push({
+        type: 'Edition',
+        editionId,
+        responsibility: 'Full SRF Edition'
+      });
+    } else {
+      backdrop.querySelectorAll('.ra-assign-group').forEach(raGroup => {
+        const raChk = raGroup.querySelector('.chk-ra');
+        if (raChk && raChk.checked) {
+          assignmentsToCreate.push({
+            type: 'Reform Area',
+            sectionId: raChk.value,
+            reformAreaId: raChk.value,
+            editionId,
+            responsibility: raChk.dataset.title
+          });
+        } else {
+          raGroup.querySelectorAll('.ap-assign-group').forEach(apGroup => {
+            const apChk = apGroup.querySelector('.chk-ap');
+            if (apChk && apChk.checked) {
               assignmentsToCreate.push({
-                type: 'Question',
-                sectionId: qChk.dataset.ra,
-                reformAreaId: qChk.dataset.ra,
-                actionPointId: qChk.dataset.ap,
-                questionId: qChk.value,
-                fieldId: qChk.value,
+                type: 'Action Point',
+                sectionId: apChk.dataset.ra,
+                reformAreaId: apChk.dataset.ra,
+                actionPointId: apChk.value,
                 editionId,
-                responsibility: qChk.dataset.title
+                responsibility: apChk.dataset.title
               });
-            });
-          }
-        });
-      }
-    });
+            } else {
+              apGroup.querySelectorAll('.chk-q:checked').forEach(qChk => {
+                assignmentsToCreate.push({
+                  type: 'Question',
+                  sectionId: qChk.dataset.ra,
+                  reformAreaId: qChk.dataset.ra,
+                  actionPointId: qChk.dataset.ap,
+                  questionId: qChk.value,
+                  fieldId: qChk.value,
+                  editionId,
+                  responsibility: qChk.dataset.title
+                });
+              });
+            }
+          });
+        }
+      });
+    }
 
     if (assignmentsToCreate.length === 0) {
       showToast('Select at least one assignment item.', 'error');
@@ -2621,10 +2670,10 @@ function openEditUserModal(userId, container) {
           </select>
         </div>
         ${isStateUser ? `
-        <div class="form-group" style="display:none;">
+        <div class="form-group">
           <label>State / UT Name *</label>
           <select id="edit-user-state" required class="form-input form-select" style="width:100%;height:38px;">
-            <option value="Andhra Pradesh" selected>Andhra Pradesh</option>
+            ${Object.keys(statesDistrictsData).map(s => `<option value="${s}" ${user.state === s || (!user.state && s === 'Andhra Pradesh') ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </div>
         ` : ''}
