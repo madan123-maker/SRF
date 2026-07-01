@@ -21,16 +21,14 @@ let scheduledReportsList = [
   { id: 'rep_3', name: 'Quarterly State Ranking Ledger', frequency: 'Quarterly', format: 'PDF', email: 'ranking.committee@dpiit.gov.in', active: true }
 ];
 
-// Helper to check X-User-Id session credentials
 function getSessionHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   try {
     const sessionRaw = sessionStorage.getItem('srf_session_v2');
     if (sessionRaw) {
       const sess = JSON.parse(sessionRaw);
-      if (sess && sess.id && sess.role) {
-        headers['X-User-Id'] = sess.id;
-        headers['X-User-Role'] = sess.role;
+      if (sess && sess.token) {
+        headers['Authorization'] = 'Bearer ' + sess.token;
       }
     }
   } catch (e) {}

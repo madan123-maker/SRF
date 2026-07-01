@@ -21,24 +21,22 @@ let _saveTimer = null;
 let _isSaving = false;
 const _saveQueue = [];
 
+function authFetch(url, options = {}) {
+  const sessionRaw = sessionStorage.getItem('srf_session_v2');
+  const sess = sessionRaw ? JSON.parse(sessionRaw) : null;
+  const headers = { ...(options.headers || {}) };
+  if (sess && sess.token) {
+    headers['Authorization'] = 'Bearer ' + sess.token;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BOOTSTRAP & MIGRATION
 // ═══════════════════════════════════════════════════════════════
 export async function initStore() {
   try {
-    const headers = {};
-    try {
-      const sessionRaw = sessionStorage.getItem("srf_session_v2");
-      if (sessionRaw) {
-        const sess = JSON.parse(sessionRaw);
-        if (sess && sess.id && sess.role) {
-          headers["X-User-Id"] = sess.id;
-          headers["X-User-Role"] = sess.role;
-        }
-      }
-    } catch (e) {}
-
-    const res = await fetch("/api/db", { headers });
+    const res = await authFetch("/api/db");
     if (res.ok) {
       _db = await res.json();
       console.log("[Store] Database loaded from MongoDB backend API.");
@@ -611,34 +609,10 @@ async function _save() {
     if (_db) {
       // Write to API (MongoDB)
       try {
-        let reqUserId = null;
-        let reqUserRole = null;
-        let reqToken = null;
-        try {
-          const sessionRaw = sessionStorage.getItem("srf_session_v2");
-          if (sessionRaw) {
-            const sess = JSON.parse(sessionRaw);
-            reqUserId = sess.id;
-            reqUserRole = sess.role;
-            reqToken = sess.token;
-          }
-        } catch (e) {}
-
-        const payload = { ..._db, requestingUserId: reqUserId };
-
-        const headers = { "Content-Type": "application/json" };
-        if (reqToken) {
-          headers["Authorization"] = "Bearer " + reqToken;
-        }
-        if (reqUserId) {
-          headers["X-User-Id"] = reqUserId;
-          headers["X-User-Role"] = reqUserRole;
-        }
-
-        const res = await fetch("/api/db", {
+        const res = await authFetch("/api/db", {
           method: "POST",
-          headers,
-          body: JSON.stringify(payload),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(_db),
         });
         if (res.ok) {
           const data = await res.json();
@@ -2255,6 +2229,7 @@ export function calculateApplicationMaxScore(appId) {
   return fields.reduce((sum, f) => sum + (f.maxScore || f.weight || 1), 0);
 }
 
+
 // ─── Question Review Queue (Admin) ───────────────────────────
 export function getQuestionReviewQueue(editionId, filters = {}) {
   const apps = (_db.applications || []).filter(
@@ -2322,15 +2297,12 @@ export function authenticateUser(username, password) {
   );
 }
 export async function createUser(data) {
-  let reqUserId = null;
   let reqUserRole = null;
   try {
     const sessionRaw = sessionStorage.getItem("srf_session_v2");
     if (sessionRaw) {
       const sess = JSON.parse(sessionRaw);
-      reqUserId = sess.id;
       reqUserRole = sess.role;
-      reqToken = sess.token;
     }
   } catch (e) {}
 
@@ -2339,12 +2311,10 @@ export async function createUser(data) {
   }
 
   try {
-    const res = await fetch("/api/register", {
+    const res = await authFetch("/api/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": reqUserId,
-        "X-User-Role": reqUserRole,
       },
       body: JSON.stringify(data),
     });
@@ -2369,15 +2339,12 @@ export async function createUser(data) {
   }
 }
 export async function importUsersBulk(usersArray) {
-  let reqUserId = null;
   let reqUserRole = null;
   try {
     const sessionRaw = sessionStorage.getItem("srf_session_v2");
     if (sessionRaw) {
       const sess = JSON.parse(sessionRaw);
-      reqUserId = sess.id;
       reqUserRole = sess.role;
-      reqToken = sess.token;
     }
   } catch (e) {}
 
@@ -2386,12 +2353,10 @@ export async function importUsersBulk(usersArray) {
   }
 
   try {
-    const res = await fetch("/api/register-bulk", {
+    const res = await authFetch("/api/register-bulk", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": reqUserId,
-        "X-User-Role": reqUserRole,
       },
       body: JSON.stringify({ users: usersArray }),
     });
@@ -4437,14 +4402,7 @@ function recalculateExistingApplications() {
 
 export async function getActiveLocks() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/applications/locks/active", {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch("/api/applications/locks/active");
     return res.json();
   } catch (e) {
     console.error("Error fetching active locks:", e);
@@ -4454,14 +4412,7 @@ export async function getActiveLocks() {
 
 export async function getLockStatus(appId) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/applications/${appId}/lock`, {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch(`/api/applications/${appId}/lock`);
     return res.json();
   } catch (e) {
     console.error("Error fetching lock status:", e);
@@ -4471,14 +4422,10 @@ export async function getLockStatus(appId) {
 
 export async function acquireLock(appId, reason = "") {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/applications/${appId}/lock`, {
+    const res = await authFetch(`/api/applications/${appId}/lock`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
       },
       body: JSON.stringify({ reason }),
     });
@@ -4491,14 +4438,10 @@ export async function acquireLock(appId, reason = "") {
 
 export async function releaseLock(appId, force = false, forceReason = "") {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/applications/${appId}/unlock`, {
+    const res = await authFetch(`/api/applications/${appId}/unlock`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
       },
       body: JSON.stringify({ force, forceReason }),
     });
@@ -4511,14 +4454,7 @@ export async function releaseLock(appId, force = false, forceReason = "") {
 
 export async function getApplicationVersions(appId) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/applications/${appId}/versions`, {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch(`/api/applications/${appId}/versions`);
     return res.json();
   } catch (e) {
     console.error("Error fetching versions:", e);
@@ -4528,14 +4464,10 @@ export async function getApplicationVersions(appId) {
 
 export async function createApplicationVersion(appId, changeSummary = "") {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/applications/${appId}/versions`, {
+    const res = await authFetch(`/api/applications/${appId}/versions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
       },
       body: JSON.stringify({ changeSummary }),
     });
@@ -4548,17 +4480,7 @@ export async function createApplicationVersion(appId, changeSummary = "") {
 
 export async function getApplicationVersionDetails(appId, versionNum) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(
-      `/api/applications/${appId}/versions/${versionNum}`,
-      {
-        headers: {
-          "X-User-Id": sess.id || "",
-          "X-User-Role": sess.role || "",
-        },
-      },
-    );
+    const res = await authFetch(`/api/applications/${appId}/versions/${versionNum}`);
     return res.json();
   } catch (e) {
     console.error("Error fetching version details:", e);
@@ -4568,14 +4490,7 @@ export async function getApplicationVersionDetails(appId, versionNum) {
 
 export async function getSLASettings() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/sla-settings", {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch("/api/sla-settings");
     return res.json();
   } catch (e) {
     console.error("Error fetching SLA settings:", e);
@@ -4591,14 +4506,10 @@ export async function getSLASettings() {
 
 export async function saveSLASettings(data) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/sla-settings", {
+    const res = await authFetch("/api/sla-settings", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
       },
       body: JSON.stringify(data),
     });
@@ -4611,14 +4522,7 @@ export async function saveSLASettings(data) {
 
 export async function getReviewerWorkload() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/reviewer-workload", {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch("/api/reviewer-workload");
     return res.json();
   } catch (e) {
     console.error("Error fetching workloads:", e);
@@ -4628,14 +4532,10 @@ export async function getReviewerWorkload() {
 
 export async function rebalanceWorkload(sourceReviewerId, targetReviewerId) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/reviewer-workload/rebalance", {
+    const res = await authFetch("/api/reviewer-workload/rebalance", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
       },
       body: JSON.stringify({ sourceReviewerId, targetReviewerId }),
     });
@@ -4648,14 +4548,7 @@ export async function rebalanceWorkload(sourceReviewerId, targetReviewerId) {
 
 export async function getBackups() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/backups", {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch("/api/backups");
     return res.json();
   } catch (e) {
     console.error("Error fetching backups:", e);
@@ -4665,14 +4558,8 @@ export async function getBackups() {
 
 export async function createBackup() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/backups", {
+    const res = await authFetch("/api/backups", {
       method: "POST",
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
     });
     return res.json();
   } catch (e) {
@@ -4683,14 +4570,8 @@ export async function createBackup() {
 
 export async function restoreBackup(id) {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch(`/api/backups/${id}/restore`, {
+    const res = await authFetch(`/api/backups/${id}/restore`, {
       method: "POST",
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
     });
     return res.json();
   } catch (e) {
@@ -4701,14 +4582,7 @@ export async function restoreBackup(id) {
 
 export async function getDataQualityReport() {
   try {
-    const sessionRaw = sessionStorage.getItem("srf_session_v2");
-    const sess = sessionRaw ? JSON.parse(sessionRaw) : {};
-    const res = await fetch("/api/data-quality-report", {
-      headers: {
-        "X-User-Id": sess.id || "",
-        "X-User-Role": sess.role || "",
-      },
-    });
+    const res = await authFetch("/api/data-quality-report");
     return res.json();
   } catch (e) {
     console.error("Error fetching data quality report:", e);
