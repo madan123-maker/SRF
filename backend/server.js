@@ -1162,21 +1162,45 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
 
 // Helper to synchronize collection
 async function syncCollection(Model, items, keyField = 'id', options = {}) {
-  if (!Array.isArray(items)) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    if (!options.skipDelete) {
+      await Model.deleteMany({}, options);
+    }
+    return;
+  }
+
   const ids = [];
-  for (const item of items) {
+  const bulkOps = items.map(item => {
     const query = { [keyField]: item[keyField] };
     const updateObj = { ...item };
     delete updateObj._id;
     if (Model.modelName === 'AuditLog' && options.reqIp) {
       updateObj.ipAddress = options.reqIp;
     }
-    await Model.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
     ids.push(item[keyField]);
+    return {
+      updateOne: {
+        filter: query,
+        update: { $set: updateObj },
+        upsert: true
+      }
+    };
+  });
+
+  try {
+    if (bulkOps.length > 0) {
+      await Model.bulkWrite(bulkOps, options);
+    }
+  } catch(err) {
+    console.error(`[syncCollection Error] failed to bulk update ${Model.modelName}:`, err);
   }
-  // Delete records not present in the payload
+
   if (!options.skipDelete) {
-    await Model.deleteMany({ [keyField]: { $nin: ids } }, options);
+    try {
+      await Model.deleteMany({ [keyField]: { $nin: ids } }, options);
+    } catch (err) {
+      console.error(`[syncCollection Error] failed to delete ${Model.modelName}:`, err);
+    }
   }
 }
 

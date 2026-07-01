@@ -520,6 +520,15 @@ function openFirstLoginResetModal(userObj) {
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  
+  const submitBtn = document.getElementById('btn-login-submit');
+  const btnText = document.getElementById('login-btn-text');
+  const spinner = document.getElementById('login-spinner');
+  
+  if (submitBtn) submitBtn.disabled = true;
+  if (btnText) btnText.textContent = 'Processing...';
+  if (spinner) spinner.style.display = 'block';
+
   const username = document.getElementById('username').value.replace(/\s+/g, '').toLowerCase();
   const password = document.getElementById('password').value;
   const result = await login(username, password);
@@ -529,9 +538,19 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     if (loginType === 'user' && result.user.role !== 'user') {
       logout();
       showToast('Admin and Super Admin cannot login from User Login', 'error');
+      // Reset button state
+      if (submitBtn) submitBtn.disabled = false;
+      if (btnText) btnText.textContent = 'Sign In';
+      if (spinner) spinner.style.display = 'none';
       return;
     }
     document.getElementById('password').value = '';
+    
+    // Reset button state before navigating
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = 'Sign In';
+    if (spinner) spinner.style.display = 'none';
+    
     if (result.user.mustResetPassword) {
       openFirstLoginResetModal(result.user);
     } else {
@@ -539,6 +558,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
   } else {
     showToast(result.error || 'Invalid credentials.', 'error');
+    // Reset button state on failure
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = 'Sign In';
+    if (spinner) spinner.style.display = 'none';
   }
 });
 
@@ -1726,21 +1749,19 @@ function renderUsersPanel(container) {
   `).join('');
 
   container.innerHTML = `
-    <div class="section-card" style="margin-bottom:24px;">
-      <div class="section-badge admin-badge">User Management</div>
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-        <div>
-          <h1>Manage Users</h1>
-          <p style="color:var(--text-muted);font-size:14px;">View, assign and manage all registered users across editions. ${isSuperAdmin() ? 'Create new admin accounts below.' : ''}</p>
-        </div>
-        ${isSuperAdmin() || isAdmin() ? `
-          <div style="display:flex;gap:8px;">
-            ${isSuperAdmin() ? `<button class="btn btn-primary" id="btn-create-admin">+ Create Admin</button>` : ''}
-            <button class="btn btn-secondary" id="btn-create-user">+ Create User</button>
-            <button class="btn btn-outline" id="btn-bulk-import-users">📂 Bulk Import Users</button>
-          </div>
-        ` : ''}
+    <div class="page-header" style="margin-bottom:24px;">
+      <div>
+        <div class="page-eyebrow" style="color: #7c3aed; background: #ede9fe; padding: 4px 12px; border-radius: 6px; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">User Management</div>
+        <h1 class="page-title">Manage Users</h1>
+        <p class="page-subtitle">View, assign and manage all registered users across editions. ${isSuperAdmin() ? 'Create new admin accounts below.' : ''}</p>
       </div>
+      ${isSuperAdmin() || isAdmin() ? `
+        <div style="display:flex;gap:10px; align-items:center;">
+          ${isSuperAdmin() ? `<button class="btn btn-primary btn-lg" id="btn-create-admin">+ Create Admin</button>` : ''}
+          <button class="btn btn-secondary btn-lg" id="btn-create-user" style="background:#fff;">+ Create User</button>
+          <button class="btn btn-outline btn-lg" id="btn-bulk-import-users" style="background:#fff;">📂 Bulk Import Users</button>
+        </div>
+      ` : ''}
     </div>
 
     <div class="card glass-card">
