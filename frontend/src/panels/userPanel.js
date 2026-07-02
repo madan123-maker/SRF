@@ -1,4 +1,4 @@
-import { userPanel, adminPanel, activeUserTab, activeApplicationId } from '../../app.js';
+import { userPanel, adminPanel, uiState } from '../../app.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { getApplicationsByUser, getUnreadCount, getDb, getApplicationById, getAnswersByApplication, getEditions, getPendingAssignmentsCount, getEditionById, createApplication, addAuditLog, addNotification, getAssignments, calculateApplicationProgress, calculateApplicationScore, calculateApplicationMaxScore, getFieldById, getFieldsByEdition, forceSave, updateUser } from '../db/store.js';
 import { openApplicationForm, _timeAgo, _userFacingStatus, _statusClass } from '../panels/applicationForm.js';
@@ -46,7 +46,7 @@ export function renderUserSidebar() {
   ];
 
   let sidebarHtml = tabs.map(t => `
-    <a href="#" class="nav-item ${activeUserTab === t.id ? 'active' : ''}" data-tab="${t.id}">
+    <a href="#" class="nav-item ${uiState.activeUserTab === t.id ? 'active' : ''}" data-tab="${t.id}">
       <span class="nav-item-icon">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${t.icon}</svg>
       </span>
@@ -55,12 +55,12 @@ export function renderUserSidebar() {
     </a>
   `).join('');
 
-  if (activeUserTab === 'form' && activeApplicationId) {
-    const app = getApplicationById(activeApplicationId);
+  if (uiState.activeUserTab === 'form' && uiState.activeApplicationId) {
+    const app = getApplicationById(uiState.activeApplicationId);
     if (app) {
       const allSections = getSectionsByEdition(app.editionId);
       const sections = allSections.filter(sec => isSectionAssignedToUser(sec, user));
-      const answers = getAnswersByApplication(activeApplicationId);
+      const answers = getAnswersByApplication(uiState.activeApplicationId);
       const answersMap = {};
       answers.forEach(a => { answersMap[a.fieldId] = a; });
 
@@ -103,7 +103,7 @@ export function renderUserSidebar() {
       e.preventDefault();
       activeSectionId = item.dataset.sec;
       if (activeUserFormContainer) {
-        openApplicationForm(activeApplicationId, activeUserFormContainer);
+        openApplicationForm(uiState.activeApplicationId, activeUserFormContainer);
       }
     });
   });
@@ -132,8 +132,8 @@ export function switchUserTab(tab) {
     clearInterval(window.chatPollingInterval);
     window.chatPollingInterval = null;
   }
-  window.currentFormAllowRemainingUploads = false;
-  activeUserTab = tab;
+  uiState.currentFormAllowRemainingUploads = false;
+  uiState.activeUserTab = tab;
   renderUserSidebar();
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.tab === tab);
@@ -251,7 +251,7 @@ export function startNewApplication(editionId, container) {
   // Redirect to Explore Applications (Drafts tab) instead of opening form directly
   window.exploreAppsState = window.exploreAppsState || {};
   window.exploreAppsState.activeTab = 'Drafts';
-  activeUserTab = 'explore';
+  uiState.activeUserTab = 'explore';
   renderUserSidebar();
   switchUserTab('explore');
   showToast(`Draft created for "${ed?.name || editionId}". Click Continue to start filling.`, 'success');
@@ -1067,7 +1067,7 @@ export function openApplicationDetail(appId, container) {
   if (!app) return;
   if (user.role === 'user' && app.userId !== user.id) {
     showAlert({ title: 'Access Denied', message: 'You are not authorized to view this application.', type: 'error' });
-    activeUserTab = 'dashboard';
+    uiState.activeUserTab = 'dashboard';
     renderUserSidebar();
     switchUserTab('dashboard');
     return;

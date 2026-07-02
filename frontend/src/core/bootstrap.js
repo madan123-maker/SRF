@@ -1,4 +1,4 @@
-import { activeApplicationId, loginScreen, portalScreen, adminPanel, userPanel } from '../../app.js';
+import { loginScreen, portalScreen, adminPanel, userPanel, uiState } from '../../app.js';
 import { releaseLock, initStore, getDb, getEditions, getAssignments, getEditionById, getAllAssignments, getUserById, getUsers, getApplicationById, getApplicationsByUser, addAuditLog } from '../db/store.js';
 import { initAuth, getCurrentUser, getRoleInfo, isAdmin, isSuperAdmin } from '../auth/auth.js';
 import { initToasts } from '../ui/toastManager.js';
@@ -20,9 +20,9 @@ export async function cleanupAllHeartbeats() {
     clearInterval(window.detailLockHeartbeat);
     window.detailLockHeartbeat = null;
   }
-  if (activeApplicationId) {
+  if (uiState.activeApplicationId) {
     try {
-      await releaseLock(activeApplicationId);
+      await releaseLock(uiState.activeApplicationId);
     } catch (e) {
       console.warn('Failed to release lock on cleanup:', e);
     }

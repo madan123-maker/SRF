@@ -1,4 +1,4 @@
-import { activeApplicationId, activeUserTab } from '../../app.js';
+import { uiState } from '../../app.js';
 import { getApplicationById, getLockStatus, releaseLock, acquireLock, getEditionById, isSectionAssignedToUser, getAnswersByApplication, isFieldAssignedToUser, getGuidelines, isQuestionFilled, calculateApplicationProgress, saveAnswerCompliance, submitQuestion, saveAnswer, forceSave, addToRecycleBin, updateApplication, addNotification, addAuditLog, submitReformArea, getAllAssignments, getFieldsByEdition, submitApplication } from '../db/store.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { renderUserSidebar, switchUserTab, getGuidelinePageForQuestion } from '../panels/userPanel.js';
@@ -9,7 +9,7 @@ import { pushToNavHistory } from '../core/bootstrap.js';
 
 export async function openApplicationForm(appId, container, allowRemainingUploads = null) {
   window.workspaceLock = true;
-  activeApplicationId = appId;
+  uiState.activeApplicationId = appId;
   activeUserFormContainer = container;
 
   const app = getApplicationById(appId);
@@ -43,7 +43,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
     `;
     container.querySelector('#btn-lock-back').addEventListener('click', () => {
       window.workspaceLock = false;
-      activeUserTab = 'dashboard';
+      uiState.activeUserTab = 'dashboard';
       const sb = document.getElementById('sidebar-nav-container');
       if (sb) sb.innerHTML = '';
       renderUserSidebar();
@@ -84,20 +84,20 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   }, 30000);
 
   if (allowRemainingUploads !== null) {
-    window.currentFormAllowRemainingUploads = allowRemainingUploads;
+    uiState.currentFormAllowRemainingUploads = allowRemainingUploads;
   } else {
     if (app && app.status === 'Additional Documents Requested') {
-      window.currentFormAllowRemainingUploads = true;
+      uiState.currentFormAllowRemainingUploads = true;
     } else {
-      window.currentFormAllowRemainingUploads = false;
+      uiState.currentFormAllowRemainingUploads = false;
     }
   }
   pushToNavHistory({ role: 'user', tab: 'form', appId });
-  activeUserTab = 'form';
+  uiState.activeUserTab = 'form';
 
   if (user.role === 'user' && app.userId !== user.id) {
     showAlert({ title: 'Access Denied', message: 'You are not authorized to view this application.', type: 'error' });
-    activeUserTab = 'dashboard';
+    uiState.activeUserTab = 'dashboard';
     renderUserSidebar();
     switchUserTab('dashboard');
     return;
@@ -109,7 +109,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
       message: 'This edition is currently unavailable.',
       type: 'warning'
     });
-    activeUserTab = 'dashboard';
+    uiState.activeUserTab = 'dashboard';
     renderUserSidebar();
     switchUserTab('dashboard');
     return;
@@ -894,7 +894,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
 
   container.querySelector('#btn-back-to-user-dash')?.addEventListener('click', () => {
     window.workspaceLock = false;
-    activeUserTab = 'dashboard';
+    uiState.activeUserTab = 'dashboard';
     document.getElementById('sidebar-nav-container').innerHTML = '';
     renderUserSidebar();
     switchUserTab('dashboard');
@@ -926,7 +926,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
     window.exploreAppsState = window.exploreAppsState || {};
     window.exploreAppsState.activeTab = 'Drafts';
     window.workspaceLock = false;
-    activeUserTab = 'explore';
+    uiState.activeUserTab = 'explore';
     renderUserSidebar();
     switchUserTab('explore');
   };
@@ -940,13 +940,13 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
       const target = link.dataset.breadcrumb;
       window.workspaceLock = false;
       if (target === 'dashboard') {
-        activeUserTab = 'dashboard';
+        uiState.activeUserTab = 'dashboard';
         renderUserSidebar();
         switchUserTab('dashboard');
       } else if (target === 'explore') {
         window.exploreAppsState = window.exploreAppsState || {};
         window.exploreAppsState.activeTab = 'Drafts';
-        activeUserTab = 'explore';
+        uiState.activeUserTab = 'explore';
         renderUserSidebar();
         switchUserTab('explore');
       }
@@ -1078,7 +1078,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
         // Redirect user to Explore Applications → Submitted tab
         window.exploreAppsState = window.exploreAppsState || {};
         window.exploreAppsState.activeTab = 'Submitted';
-        activeUserTab = 'explore';
+        uiState.activeUserTab = 'explore';
         renderUserSidebar();
         switchUserTab('explore');
         

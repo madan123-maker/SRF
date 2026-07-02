@@ -87,14 +87,11 @@ boot();
 // Helper for debouncing events/rendering
 
 // ─── STATE ─────────────────────────────────────────────────────────────────
-export let activeAdminTab = 'editions';
-export let activeUserTab = 'dashboard';
 let activeEditionId = null;
-export let activeApplicationId = null;
 let activeUserFormContainer = null;
 let activeSectionId = null;
 let autoSaveTimer = null;
-window.currentFormAllowRemainingUploads = false;
+export const uiState = { activeAdminTab: 'editions', activeUserTab: 'dashboard', activeApplicationId: null, currentFormAllowRemainingUploads: false };
 window.workspaceLock = false;
 
 // Global dynamic real-time refresh function
@@ -157,12 +154,12 @@ window.refreshCurrentView = function() {
         return;
       }
       
-      if (activeAdminTab) {
-        switchAdminTab(activeAdminTab);
+      if (uiState.activeAdminTab) {
+        switchAdminTab(uiState.activeAdminTab);
       }
     } else {
-      if (activeUserTab && activeUserTab !== 'form') {
-        switchUserTab(activeUserTab);
+      if (uiState.activeUserTab && uiState.activeUserTab !== 'form') {
+        switchUserTab(uiState.activeUserTab);
       }
     }
   } catch (e) {}
@@ -331,11 +328,6 @@ window.switchUserTab = switchUserTab;
 window.openApplicationForm = openApplicationForm;
 window.openApplicationDetail = openApplicationDetail;
 window.renderUserSidebar = renderUserSidebar;
-Object.defineProperty(window, 'activeUserTab', {
-  get: () => activeUserTab,
-  set: (v) => { activeUserTab = v; },
-  configurable: true
-});
 
 // ─── MESSAGES TAB ENGINE & POLLING ──────────────────────────────────────────
 let activeContactId = null;

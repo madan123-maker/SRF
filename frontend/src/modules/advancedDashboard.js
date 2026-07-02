@@ -1,3 +1,4 @@
+import { uiState } from '../../app.js';
 /* ==========================================================================
    advancedDashboard.js — Compliance Monitoring & Intelligence Dashboard Engine
    Dynamic SRF Management Platform — Enterprise Edition
@@ -854,7 +855,7 @@ export function renderUserDashboardEnhanced(container) {
       } else if (type === 'workspace') {
         renderTabbedApplicationWorkspace(container, id);
       } else if (type === 'explore') {
-        window.activeUserTab = 'explore';
+        uiState.activeUserTab = 'explore';
         window.renderUserSidebar();
         window.switchUserTab('explore');
       } else if (type === 'notifications') {
@@ -871,7 +872,7 @@ export function renderUserDashboardEnhanced(container) {
       card.addEventListener('click', () => {
         const tab = card.dataset.tab;
         if (!tab || !window.switchUserTab) return;
-        window.activeUserTab = tab;
+        uiState.activeUserTab = tab;
         if (window.renderUserSidebar) window.renderUserSidebar();
         window.switchUserTab(tab);
       });

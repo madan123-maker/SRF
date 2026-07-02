@@ -1,4 +1,4 @@
-import { adminPanel, userPanel, activeAdminTab } from '../../app.js';
+import { adminPanel, userPanel, uiState } from '../../app.js';
 import { getCurrentUser, isSuperAdmin, isAdmin, login } from '../auth/auth.js';
 import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment } from '../db/store.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
@@ -46,7 +46,7 @@ export function renderAdminSidebar() {
   }
 
   nav.innerHTML = tabs.map(t => `
-    <a href="#" class="nav-item ${activeAdminTab === t.id ? 'active' : ''}" data-tab="${t.id}">
+    <a href="#" class="nav-item ${uiState.activeAdminTab === t.id ? 'active' : ''}" data-tab="${t.id}">
       <span class="nav-item-icon">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${t.icon}</svg>
       </span>
@@ -78,7 +78,7 @@ export function switchAdminTab(tab) {
     clearInterval(window.chatPollingInterval);
     window.chatPollingInterval = null;
   }
-  activeAdminTab = tab;
+  uiState.activeAdminTab = tab;
 
   // Update nav highlights
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(item => {
@@ -173,7 +173,7 @@ export function openEditionTracker(editionId) {
   pushToNavHistory({ role: 'admin', tab: 'tracker', editionId });
 
   activeEditionId = editionId;
-  activeAdminTab = 'tracker';
+  uiState.activeAdminTab = 'tracker';
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(i => i.classList.remove('active'));
 
   ['admin-editions-view','admin-tracker-view','schema-editor-panel',
