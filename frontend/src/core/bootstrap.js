@@ -1,13 +1,15 @@
-import { activeApplicationId, openApplicationForm, loginScreen, portalScreen, adminPanel, userPanel } from '../../app.js';
+import { activeApplicationId, loginScreen, portalScreen, adminPanel, userPanel } from '../../app.js';
 import { releaseLock, initStore, getDb, getEditions, getAssignments, getEditionById, getAllAssignments, getUserById, getUsers, getApplicationById, getApplicationsByUser, addAuditLog } from '../db/store.js';
 import { initAuth, getCurrentUser, getRoleInfo, isAdmin, isSuperAdmin } from '../auth/auth.js';
 import { initToasts } from '../ui/toastManager.js';
 import { renderDiagnosticsPanel } from '../panels/diagnostics.js';
 import { openEditionTracker, switchAdminTab, openEditUserModal, renderAdminPortal } from '../panels/adminPanel.js';
 import { openApplicationDetail, switchUserTab, startNewApplication, renderUserPortal } from '../panels/userPanel.js';
+import { openApplicationForm } from '../panels/applicationForm.js';
 import { renderTabbedApplicationWorkspace } from '../modules/advancedDashboard.js';
 import { updateNotificationBadge, showNotificationsDropdown } from '../panels/notifications.js';
 import { openProfileModal } from '../panels/profileMessages.js';
+
 
 export async function cleanupAllHeartbeats() {
   if (window.formLockHeartbeat) {

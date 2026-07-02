@@ -4,6 +4,7 @@ import { isAssignmentValid } from '../panels/userPanel.js';
 import { showConfirm } from '../ui/confirmDialog.js';
 import { getCurrentUser } from '../auth/auth.js';
 
+
 export function renderPublisherPanel(container) {
   if (!container) return;
   const editions = getEditions();

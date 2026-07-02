@@ -1,4 +1,4 @@
-import { adminPanel, userPanel, activeAdminTab, _statusClass, _statusLabel } from '../../app.js';
+import { adminPanel, userPanel, activeAdminTab } from '../../app.js';
 import { getCurrentUser, isSuperAdmin, isAdmin, login } from '../auth/auth.js';
 import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment } from '../db/store.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
@@ -10,6 +10,8 @@ import { renderGovernancePanel } from '../modules/governanceManager.js';
 import { showToast } from '../ui/toastManager.js';
 import { showConfirm } from '../ui/confirmDialog.js';
 import { statesDistrictsData, allStates } from '../data/geoData.js';
+import { _statusClass, _statusLabel } from '../panels/applicationForm.js';
+
 
 export function renderAdminPortal() {
   adminPanel.classList.remove('hidden');

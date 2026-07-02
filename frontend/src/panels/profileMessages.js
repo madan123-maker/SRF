@@ -5,6 +5,7 @@ import { showToast } from '../ui/toastManager.js';
 import { renderAdminSidebar } from '../panels/adminPanel.js';
 import { renderUserSidebar } from '../panels/userPanel.js';
 
+
 export function openProfileModal() {
   const currentUser = getCurrentUser();
   if (!currentUser) return;

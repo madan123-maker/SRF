@@ -1,6 +1,7 @@
-import { userPanel, adminPanel, activeUserTab, activeApplicationId, openApplicationForm, _timeAgo, _userFacingStatus, _statusClass } from '../../app.js';
+import { userPanel, adminPanel, activeUserTab, activeApplicationId } from '../../app.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { getApplicationsByUser, getUnreadCount, getDb, getApplicationById, getAnswersByApplication, getEditions, getPendingAssignmentsCount, getEditionById, createApplication, addAuditLog, addNotification, getAssignments, calculateApplicationProgress, calculateApplicationScore, calculateApplicationMaxScore, getFieldById, getFieldsByEdition, forceSave, updateUser } from '../db/store.js';
+import { openApplicationForm, _timeAgo, _userFacingStatus, _statusClass } from '../panels/applicationForm.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
 import { renderUserDashboardEnhanced, renderTabbedApplicationWorkspace } from '../modules/advancedDashboard.js';
 import { renderNotificationsPage } from '../panels/notifications.js';
@@ -9,6 +10,7 @@ import { showToast } from '../ui/toastManager.js';
 import { showConfirm, showAlert } from '../ui/confirmDialog.js';
 import { statesDistrictsData } from '../data/geoData.js';
 import { openChangePasswordModal } from '../auth/authModals.js';
+
 
 export function renderUserPortal() {
   userPanel.classList.remove('hidden');
@@ -130,7 +132,7 @@ export function switchUserTab(tab) {
     clearInterval(window.chatPollingInterval);
     window.chatPollingInterval = null;
   }
-  currentFormAllowRemainingUploads = false;
+  window.currentFormAllowRemainingUploads = false;
   activeUserTab = tab;
   renderUserSidebar();
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(item => {

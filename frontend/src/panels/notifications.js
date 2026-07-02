@@ -3,6 +3,7 @@ import { getNotifications, getUnreadCount, markAllNotificationsRead, dismissNoti
 import { renderUserSidebar, openApplicationDetail, switchUserTab } from '../panels/userPanel.js';
 import { showToast } from '../ui/toastManager.js';
 
+
 export function renderNotificationsPage(container) {
   const user = getCurrentUser();
   

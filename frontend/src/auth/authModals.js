@@ -4,6 +4,7 @@ import { showToast } from '../ui/toastManager.js';
 import { updateUser, addAuditLog, getDepartments, getUserById } from '../db/store.js';
 import { statesDistrictsData } from '../data/geoData.js';
 
+
 export function sendPasswordOtp(email, otp, subject, userId) {
   return postJson('/api/send-otp', { email, otp, subject, userId });
 }

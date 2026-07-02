@@ -1,6 +1,7 @@
 import { getDb, runDatabaseIntegrityCheck, repairDataIntegrity } from '../db/store.js';
 import { showToast } from '../ui/toastManager.js';
 
+
 export function renderDiagnosticsPanel() {
   if (document.getElementById('debug-diagnostics-btn')) return;
 
