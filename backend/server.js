@@ -2,7 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import dotenv from 'dotenv';
-
+import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import {
   connectDB,
@@ -188,7 +188,7 @@ async function seedDatabase() {
       const fieldId = `field_srf6_${qData.num.replace('.', '_')}`;
       const apNum = qData.num.split('.')[0];
       const apTitle = apTitles[apNum] || `Action Point ${apNum}`;
-      
+
       const defaultEl = {
         id: `el_srf6_${qData.num.replace('.', '_')}_1`,
         type: qData.type,
@@ -246,7 +246,7 @@ async function verifySession(req, res, next) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   }
-  
+
   if (!token) {
     const reqUserId = req.header('X-User-Id');
     const reqUserRole = req.header('X-User-Role');
@@ -256,7 +256,7 @@ async function verifySession(req, res, next) {
         if (!user || user.active === false) return res.status(403).json({ error: 'Access denied' });
         req.user = user;
         return next();
-      } catch(e) { return res.status(500).json({ error: 'Server error' }); }
+      } catch (e) { return res.status(500).json({ error: 'Server error' }); }
     }
     return res.status(401).json({ error: 'Session credentials required' });
   }
@@ -308,7 +308,7 @@ async function verifySessionOptional(req, res, next) {
         if (user && user.active !== false) {
           req.user = user;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -335,11 +335,11 @@ app.post('/api/login', async (req, res) => {
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    
+
     const sanitizedUser = { ...user };
     delete sanitizedUser.password;
     const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, process.env.JWT_SECRET || 'srf_super_secret_key_2026', { expiresIn: '24h' });
-    
+
     // Add backend audit log for secure tracking
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || '127.0.0.1';
     const loginAudit = new AuditLog({
@@ -536,11 +536,11 @@ app.delete('/api/users/:id', verifySession, async (req, res) => {
     }
     const userId = req.params.id;
     if (!userId) return res.status(400).json({ error: 'User ID required' });
-    
+
     await User.deleteOne({ id: userId });
     await Assignment.deleteMany({ userId: userId });
     await Notification.deleteMany({ userId: userId });
-    
+
     res.json({ success: true, message: 'User permanently deleted.' });
   } catch (err) {
     console.error('[API Delete User Error]:', err);
@@ -604,7 +604,7 @@ app.post('/api/register-bulk', verifySession, async (req, res) => {
         });
 
         await newUser.save();
-        
+
         const sanitized = newUser.toObject();
         delete sanitized.password;
         createdUsers.push(sanitized);
@@ -919,7 +919,7 @@ app.post('/api/forgot-password', async (req, res) => {
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
-    
+
     // Save OTP and expiration in User document
     await User.updateOne(
       { id: user.id },
@@ -965,11 +965,11 @@ app.post('/api/reset-password', async (req, res) => {
     // Reset password
     user.password = hashPassword(newPassword);
     user.mustResetPassword = false;
-    
+
     // Clear OTP fields in DB
     user.set('resetOtp', undefined);
     user.set('resetOtpExpires', undefined);
-    
+
     await user.save();
 
     // Add Audit Log
@@ -1036,10 +1036,10 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
       // Restrict users to their assigned editions, reform areas, questions, own data
       const assignments = await Assignment.find({ userId: req.user.id }).lean();
       const assignedEditionIds = [...new Set(assignments.map(a => a.editionId))];
-      
+
       const editions = await Edition.find({ id: { $in: assignedEditionIds }, status: 'published', isDeleted: false }).lean();
       const activeEdIds = editions.map(e => e.id);
-      
+
       const allReformAreas = await ReformArea.find({ editionId: { $in: activeEdIds } }).lean();
       const allFields = await FormField.find({ editionId: { $in: activeEdIds } }).lean();
 
@@ -1075,7 +1075,7 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
       const applications = await Application.find({ userId: req.user.id, editionId: { $in: activeEdIds } }).lean();
       const appIds = applications.map(a => a.id);
       const applicationAnswers = await ApplicationAnswer.find({ applicationId: { $in: appIds } }).lean();
-      
+
       const notifications = await Notification.find({ userId: req.user.id }).lean();
       const auditLogs = await AuditLog.find({ userId: req.user.id }).lean();
       const schemaVersions = await SchemaVersion.find({ editionId: { $in: activeEdIds } }).lean();
@@ -1115,7 +1115,7 @@ app.get('/api/db', verifySessionOptional, async (req, res) => {
     const formFields = await FormField.find().lean();
     const applications = await Application.find().lean();
     const applicationAnswers = await ApplicationAnswer.find().lean();
-    
+
     const usersRaw = await User.find().lean();
     const users = usersRaw.map(u => {
       const sanitized = { ...u };
@@ -1191,7 +1191,7 @@ async function syncCollection(Model, items, keyField = 'id', options = {}) {
     if (bulkOps.length > 0) {
       await Model.bulkWrite(bulkOps, options);
     }
-  } catch(err) {
+  } catch (err) {
     console.error(`[syncCollection Error] failed to bulk update ${Model.modelName}:`, err);
   }
 
@@ -1360,7 +1360,7 @@ app.get('/api/download-file/:appId/:fieldId/:docId', async (req, res) => {
 
 function isValidStatusTransition(oldStatus, newStatus, role) {
   if (!oldStatus || oldStatus === newStatus) return true;
-  
+
   const transitions = {
     'Draft': ['Submitted', 'Resubmitted'],
     'Submitted': ['Under Review', 'Approved', 'Admin Approved', 'Rejected', 'Additional Documents Requested'],
@@ -1401,9 +1401,9 @@ app.post('/api/db', verifySession, async (req, res) => {
 
   try {
     const client = mongoose.connection.getClient();
-    const isReplicaSet = client.topology && client.topology.description && 
-                         (client.topology.description.type === 'ReplicaSetWithPrimary' || 
-                          client.topology.description.type === 'ReplicaSetNoPrimary');
+    const isReplicaSet = client.topology && client.topology.description &&
+      (client.topology.description.type === 'ReplicaSetWithPrimary' ||
+        client.topology.description.type === 'ReplicaSetNoPrimary');
     if (isReplicaSet) {
       session = await mongoose.startSession();
       session.startTransaction();
@@ -1415,7 +1415,7 @@ app.post('/api/db', verifySession, async (req, res) => {
   } catch (sessErr) {
     console.log('[API] Transactions not supported or failed to start session. Falling back to non-transactional execution.');
     if (session) {
-      try { session.endSession(); } catch(e) {}
+      try { session.endSession(); } catch (e) { }
     }
     session = null;
     useTransaction = false;
@@ -1477,17 +1477,17 @@ app.post('/api/db', verifySession, async (req, res) => {
       const groups = {};
 
       for (const app of payload.applications) {
-        const user = payload.users?.find(u => u.id === app.userId) || 
-                     await User.findOne({ id: app.userId }, null, options).lean();
-        
+        const user = payload.users?.find(u => u.id === app.userId) ||
+          await User.findOne({ id: app.userId }, null, options).lean();
+
         app.state = user?.state || '';
         app.organization = user?.organization || '';
 
         const isUserRole = user?.role === 'user';
         const key = isUserRole
-          ? (app.state 
-              ? `${app.editionId}_state_${app.state}` 
-              : `${app.editionId}_org_${app.organization}`)
+          ? (app.state
+            ? `${app.editionId}_state_${app.state}`
+            : `${app.editionId}_org_${app.organization}`)
           : `${app.editionId}_user_${app.userId}`;
 
         if (!groups[key]) {
@@ -1510,7 +1510,7 @@ app.post('/api/db', verifySession, async (req, res) => {
             'Draft': 2,
             'Rejected': 1
           };
-          
+
           apps.sort((a, b) => {
             const pa = statusPriority[a.status] || 0;
             const pb = statusPriority[b.status] || 0;
@@ -1558,7 +1558,7 @@ app.post('/api/db', verifySession, async (req, res) => {
         "List of Higher Education Institutes / Incubators / relevant entities covered"
       ];
       const arrowLines = arrowText.map(line => line.trim().toLowerCase().replace(/\s+/g, ' '));
-      
+
       payload.formFields = payload.formFields.map(field => {
         if (field.docs && Array.isArray(field.docs)) {
           field.docs = field.docs.filter(doc => {
@@ -1608,8 +1608,8 @@ app.post('/api/db', verifySession, async (req, res) => {
       // 2. Validate answers and check alignment
       if (payload.applicationAnswers) {
         for (const ans of payload.applicationAnswers) {
-          const app = payload.applications?.find(a => a.id === ans.applicationId) || 
-                      await Application.findOne({ id: ans.applicationId }, null, options).lean();
+          const app = payload.applications?.find(a => a.id === ans.applicationId) ||
+            await Application.findOne({ id: ans.applicationId }, null, options).lean();
           if (!app) continue;
           if (app.userId !== req.user.id) {
             if (useTransaction) { await session.abortTransaction(); session.endSession(); }
@@ -1617,7 +1617,7 @@ app.post('/api/db', verifySession, async (req, res) => {
           }
 
           const field = payload.formFields?.find(f => f.id === ans.fieldId) ||
-                        await FormField.findOne({ id: ans.fieldId }, null, options).lean();
+            await FormField.findOne({ id: ans.fieldId }, null, options).lean();
           if (!field) continue;
 
           if (!await isFieldAssignedToUserBackend(field, req.user, payload)) {
@@ -1727,7 +1727,7 @@ app.post('/api/db', verifySession, async (req, res) => {
       for (const ans of payload.applicationAnswers) {
         if (ans.questionStatus === 'Approved' && ans.questionScore > 0) {
           const field = payload.formFields?.find(f => f.id === ans.fieldId) ||
-                        await FormField.findOne({ id: ans.fieldId }, null, options).lean();
+            await FormField.findOne({ id: ans.fieldId }, null, options).lean();
           if (field) {
             const maxScore = field.maxScore || field.weight || 1;
             if (ans.questionScore > maxScore) {
@@ -1742,7 +1742,7 @@ app.post('/api/db', verifySession, async (req, res) => {
         }
       }
     }
-    
+
     // Backend validation for user registration
     if (payload.users) {
       const existingUsers = await User.find({}, null, options).lean();
@@ -1755,7 +1755,7 @@ app.post('/api/db', verifySession, async (req, res) => {
             isAuthorizedAdminReq = true;
           }
         }
-        
+
         if (existingUsers.length > 0 && !isAuthorizedAdminReq) {
           console.warn(`[API Validation Block] Non-admin/non-superadmin attempted to create ${newUsers.length} users.`);
           if (useTransaction) {
@@ -1776,7 +1776,7 @@ app.post('/api/db', verifySession, async (req, res) => {
         }
       }
     }
-    
+
     // Sync users list while preserving passwords in DB
     if (payload.users) {
       for (const u of payload.users) {
@@ -1804,7 +1804,7 @@ app.post('/api/db', verifySession, async (req, res) => {
     if (req.user.role === 'admin' || req.user.role === 'reviewer') {
       // Admins cannot change Edition schemas or global Platform Settings
       await syncCollection(Application, payload.applications, 'id', { ...options, skipDelete: true });
-      
+
       if (payload.applicationAnswers) {
         for (let ans of payload.applicationAnswers) {
           const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
@@ -1893,9 +1893,17 @@ app.post('/api/db', verifySession, async (req, res) => {
       }
       try {
         session.endSession();
-      } catch (e) {}
+      } catch (e) { }
     }
-    res.status(500).json({ error: 'Server error synchronizing database state' });
+    // TEMPORARY DEBUG: include the real error so it's visible in the browser's
+    // Network tab response body, since Render's own logs aren't reachable right
+    // now. Revert this to the generic message once the root cause is fixed —
+    // stack traces can leak internal details and shouldn't ship long-term.
+    res.status(500).json({
+      error: 'Server error synchronizing database state',
+      debug_message: err.message,
+      debug_stack: err.stack,
+    });
   }
 });
 
@@ -1903,7 +1911,7 @@ app.post('/api/db', verifySession, async (req, res) => {
 app.post('/api/db/reset', async (req, res) => {
   try {
     console.log('[API] Resetting database to seed state...');
-    
+
     // Clear all collections
     await User.deleteMany({});
     await Edition.deleteMany({});
@@ -1961,9 +1969,9 @@ async function deduplicateExistingApplicationsInDB() {
 
       const isUserRole = user?.role === 'user';
       const key = isUserRole
-        ? (state 
-            ? `${app.editionId}_state_${state}` 
-            : `${app.editionId}_org_${organization}`)
+        ? (state
+          ? `${app.editionId}_state_${state}`
+          : `${app.editionId}_org_${organization}`)
         : `${app.editionId}_user_${app.userId}`;
 
       if (!groups[key]) groups[key] = [];
@@ -2047,16 +2055,16 @@ app.get('/api/files/:appId/:fieldId/:docId', verifySession, async (req, res) => 
 
     const ans = await ApplicationAnswer.findOne({ applicationId: appId, fieldId: fieldId }).lean();
     if (!ans || !ans.files) return res.status(404).send('Document not found');
-    
+
     const file = ans.files.find(f => f.docId === docId);
     if (!file || !file.dataUrl) return res.status(404).send('File content not found');
-    
+
     const matches = file.dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) return res.status(400).send('Invalid file format');
-    
+
     const mimeType = matches[1];
     const buffer = Buffer.from(matches[2], 'base64');
-    
+
     res.set('Content-Type', mimeType);
     res.set('Content-Disposition', `attachment; filename="${file.name || 'document'}"`);
     res.send(buffer);
@@ -2122,11 +2130,11 @@ async function cleanupUsernamesWithSpaces() {
         const oldUsername = user.username;
         const newUsername = oldUsername.replace(/\s+/g, '');
         console.log(`[Startup Cleanup] Removing spaces from username: "${oldUsername}" -> "${newUsername}"`);
-        
+
         // Update User document
         await User.updateOne({ _id: user._id }, { username: newUsername });
         updatedCount++;
-        
+
         // Update any FormField assignments that reference this username
         const formFields = await FormField.find({
           $or: [
@@ -2185,7 +2193,7 @@ app.post('/api/sla-settings', verifySession, async (req, res) => {
     }
 
     const { submissionDays, reviewDays, approvalDays, escalationDays, reminderFrequency } = req.body;
-    
+
     let settings = await SLASettings.findOne({ id: 'sla_default' });
     if (!settings) {
       settings = new SLASettings({ id: 'sla_default' });
@@ -2309,7 +2317,7 @@ app.get('/api/applications/locks/active', verifySession, async (req, res) => {
     }
     const now = new Date();
     await ApplicationLock.deleteMany({ expiresAt: { $lt: now.toISOString() } });
-    
+
     const locks = await ApplicationLock.find({}).lean();
     const locksWithUser = await Promise.all(locks.map(async (l) => {
       const userObj = await User.findOne({ id: l.userId }).lean();
@@ -2419,7 +2427,7 @@ app.post('/api/applications/:appId/unlock', verifySession, async (req, res) => {
         lock.forceUnlockBy = req.user.username;
         lock.forceUnlockReason = forceReason || 'Super Admin manual override';
         lock.forceUnlockedAt = new Date().toISOString();
-        
+
         await lock.save();
         await ApplicationLock.deleteOne({ id: lock.id });
 

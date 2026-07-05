@@ -5,6 +5,8 @@ import { showToast } from '../ui/toastManager.js';
 import { renderAdminSidebar } from '../panels/adminPanel.js';
 import { renderUserSidebar } from '../panels/userPanel.js';
 
+let activeContactId = null;
+
 
 export function openProfileModal() {
   const currentUser = getCurrentUser();

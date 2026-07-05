@@ -87,10 +87,10 @@ boot();
 // Helper for debouncing events/rendering
 
 // ─── STATE ─────────────────────────────────────────────────────────────────
-let activeEditionId = null;
-let activeUserFormContainer = null;
-let activeSectionId = null;
-let autoSaveTimer = null;
+window.activeEditionId = null;
+window.activeUserFormContainer = null;
+window.activeSectionId = null;
+window.autoSaveTimer = null;
 export const uiState = { activeAdminTab: 'editions', activeUserTab: 'dashboard', activeApplicationId: null, currentFormAllowRemainingUploads: false };
 window.workspaceLock = false;
 

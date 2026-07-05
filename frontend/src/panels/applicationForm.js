@@ -1,16 +1,18 @@
 import { uiState } from '../../app.js';
-import { getApplicationById, getLockStatus, releaseLock, acquireLock, getEditionById, isSectionAssignedToUser, getAnswersByApplication, isFieldAssignedToUser, getGuidelines, isQuestionFilled, calculateApplicationProgress, saveAnswerCompliance, submitQuestion, saveAnswer, forceSave, addToRecycleBin, updateApplication, addNotification, addAuditLog, submitReformArea, getAllAssignments, getFieldsByEdition, submitApplication } from '../db/store.js';
+import { getApplicationById, getLockStatus, releaseLock, acquireLock, getEditionById, isSectionAssignedToUser, getAnswersByApplication, isFieldAssignedToUser, getGuidelines, isQuestionFilled, calculateApplicationProgress, saveAnswerCompliance, submitQuestion, saveAnswer, forceSave, addToRecycleBin, updateApplication, addNotification, addAuditLog, submitReformArea, getAllAssignments, getFieldsByEdition, submitApplication, getSectionsByEdition, getFieldsBySection } from '../db/store.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { renderUserSidebar, switchUserTab, getGuidelinePageForQuestion } from '../panels/userPanel.js';
 import { showConfirm, showAlert, showFileViewer } from '../ui/confirmDialog.js';
 import { showToast } from '../ui/toastManager.js';
 import { pushToNavHistory } from '../core/bootstrap.js';
+import { dataURLtoObjectURL } from '../ui/fileUtil.js';
+import { NOTIFICATION_EVENTS } from '../db/schema.js';
 
 
 export async function openApplicationForm(appId, container, allowRemainingUploads = null) {
   window.workspaceLock = true;
   uiState.activeApplicationId = appId;
-  activeUserFormContainer = container;
+  window.activeUserFormContainer = container;
 
   const app = getApplicationById(appId);
   if (!app) return;
@@ -117,7 +119,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   const allSections = getSectionsByEdition(app.editionId);
   const sections = allSections.filter(sec => isSectionAssignedToUser(sec, user));
 
-  if (!activeSectionId || !sections.find(s => s.id === activeSectionId)) {
+  if (!window.activeSectionId || !sections.find(s => s.id === window.activeSectionId)) {
     // Try to restore last active section from sessionStorage (for drafts)
     let restoredSection = false;
     try {
@@ -125,12 +127,12 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
       if (posRaw) {
         const pos = JSON.parse(posRaw);
         if (pos && pos.sectionId && sections.find(s => s.id === pos.sectionId)) {
-          activeSectionId = pos.sectionId;
+          window.activeSectionId = pos.sectionId;
           restoredSection = true;
         }
       }
     } catch(e) {}
-    if (!restoredSection) activeSectionId = sections[0]?.id;
+    if (!restoredSection) window.activeSectionId = sections[0]?.id;
   }
 
   const answers = getAnswersByApplication(appId);
@@ -144,11 +146,11 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   // Sidebar section nav (integrated with main nav bar via renderUserSidebar)
   renderUserSidebar();
 
-  const activeSection = sections.find(s => s.id === activeSectionId) || sections[0];
+  const activeSection = sections.find(s => s.id === window.activeSectionId) || sections[0];
   let sectionFields = activeSection ? getFieldsBySection(activeSection.id) : [];
   sectionFields = sectionFields.filter(f => isFieldAssignedToUser(f, user));
 
-  const currentIdx = sections.findIndex(s => s.id === activeSectionId);
+  const currentIdx = sections.findIndex(s => s.id === window.activeSectionId);
   const prevSec = currentIdx > 0 ? sections[currentIdx - 1] : null;
   const nextSec = currentIdx < sections.length - 1 ? sections[currentIdx + 1] : null;
 
@@ -750,11 +752,11 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
 
   // Next / Prev Section Navigation Listeners
   container.querySelector('#btn-prev-section')?.addEventListener('click', () => {
-    activeSectionId = prevSec.id;
+    window.activeSectionId = prevSec.id;
     openApplicationForm(appId, container);
   });
   container.querySelector('#btn-next-section')?.addEventListener('click', () => {
-    activeSectionId = nextSec.id;
+    window.activeSectionId = nextSec.id;
     openApplicationForm(appId, container);
   });
 
@@ -904,7 +906,7 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   const _persistDraftPosition = () => {
     try {
       sessionStorage.setItem(`srf_draft_pos_${appId}`, JSON.stringify({
-        sectionId: activeSectionId,
+        sectionId: window.activeSectionId,
         scrollY: window.scrollY
       }));
     } catch(e) {}
@@ -954,11 +956,11 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   });
 
   const doSubmitReformArea = () => {
-    const result = submitReformArea(appId, activeSectionId, user.id);
+    const result = submitReformArea(appId, window.activeSectionId, user.id);
     if (result.success) {
       addNotification(user.id, NOTIFICATION_EVENTS.REFORM_AREA_SUBMITTED,
-        `Reform Area "${activeSection?.title || activeSectionId}" has been submitted successfully.`, appId);
-      addAuditLog(user.id, `Submitted Reform Area ${activeSectionId}`, 'application', appId);
+        `Reform Area "${activeSection?.title || window.activeSectionId}" has been submitted successfully.`, appId);
+      addAuditLog(user.id, `Submitted Reform Area ${window.activeSectionId}`, 'application', appId);
       showToast('Reform Area Submitted Successfully!', 'success');
       openApplicationForm(appId, container);
     } else {
@@ -1118,9 +1120,9 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
 
 
   // Auto-save every 30 seconds — flush live DOM inputs, then persist
-  clearInterval(autoSaveTimer);
+  clearInterval(window.autoSaveTimer);
   if (!isFrozen) {
-    autoSaveTimer = setInterval(() => {
+    window.autoSaveTimer = setInterval(() => {
       // Collect live DOM values before flushing
       container.querySelectorAll('.field-answer-input, .multiselect-chk, .user-el-input, .user-el-cb-input, .user-el-radio-input, .user-el-table-input').forEach(inp => {
         inp.dispatchEvent(new Event('change'));

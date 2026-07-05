@@ -623,7 +623,16 @@ async function _save() {
             _db.applicationAnswers = data.applicationAnswers;
           }
         } else {
-          console.error("[Store] Failed to save database to MongoDB API.");
+          let errorBody = null;
+          try {
+            errorBody = await res.json();
+          } catch (parseErr) {
+            errorBody = { error: '(response body was not JSON)' };
+          }
+          console.error(
+            `[Store] Failed to save database to MongoDB API. Status: ${res.status}`,
+            errorBody,
+          );
         }
       } catch (e) {
         console.error(
@@ -664,12 +673,12 @@ async function _save() {
             cacheDbFallback.recycleBin = cacheDbFallback.recycleBin.map(rb => ({ ...rb, dataUrl: undefined }));
           }
           localStorage.setItem(DB_KEY, JSON.stringify(cacheDbFallback));
-        } catch (err) {}
+        } catch (err) { }
       }
 
       try {
         window.dispatchEvent(new CustomEvent("db-sync-complete"));
-      } catch (err) {}
+      } catch (err) { }
     }
   } finally {
     _isSaving = false;
@@ -717,7 +726,7 @@ export function getEditions(includeDeleted = false) {
         return active;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return active.filter((e) => e.status === "published");
 }
@@ -761,7 +770,7 @@ export function createEdition(data) {
       const u = JSON.parse(sessionRaw);
       if (u && u.id) currentUserId = u.id;
     }
-  } catch (e) {}
+  } catch (e) { }
   addAuditLog(currentUserId, `Created edition: ${ed.name}`, "edition", ed.id);
 
   _save();
@@ -783,7 +792,7 @@ export function updateEdition(id, data) {
           const u = JSON.parse(sessionRaw);
           if (u && u.id) currentUserId = u.id;
         }
-      } catch (e) {}
+      } catch (e) { }
       if (newStatus === "published") {
         addAuditLog(
           currentUserId,
@@ -828,7 +837,7 @@ export function deleteEdition(id) {
           edition.deletedBy = u.username || u.name;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!_db.recycleBin) _db.recycleBin = [];
 
@@ -958,7 +967,7 @@ export function deleteReformArea(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const fields = (_db.formFields || []).filter((f) => f.reformAreaId === id);
     const fieldIds = fields.map((f) => f.id);
@@ -1086,7 +1095,7 @@ export function deleteField(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const answers = (_db.applicationAnswers || []).filter(
       (a) => a.fieldId === id,
@@ -1381,7 +1390,7 @@ export function updateApplication(id, data) {
           currentUserId = u.id;
           currentUserRole = u.role;
         }
-      } catch (e) {}
+      } catch (e) { }
 
       if (currentUserRole !== "superadmin") {
         const allowed = allowedTransitions[oldStatus] || [];
@@ -1428,7 +1437,7 @@ export function deleteApplication(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     _db.recycleBin.push({
       id:
@@ -1573,7 +1582,7 @@ function isAnswerNo(ans, field) {
           }
         });
         return hasNo;
-      } catch (e) {}
+      } catch (e) { }
     }
   }
   return false;
@@ -2163,7 +2172,7 @@ function _recalcScore(appId) {
           const u = JSON.parse(sessionRaw);
           currentUserId = u.username || u.name || u.id;
         }
-      } catch (e) {}
+      } catch (e) { }
       addTimelineEntry(
         appId,
         `Score updated: ${score} marks (previously ${oldScore})`,
@@ -2304,7 +2313,7 @@ export async function createUser(data) {
       const sess = JSON.parse(sessionRaw);
       reqUserRole = sess.role;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   if (reqUserRole !== "superadmin" && reqUserRole !== "admin") {
     return { error: "Only administrators can register users." };
@@ -2320,7 +2329,7 @@ export async function createUser(data) {
     });
     if (!res.ok) {
       let errData = {};
-      try { errData = await res.json(); } catch(e) { errData.error = res.statusText || 'Server error'; }
+      try { errData = await res.json(); } catch (e) { errData.error = res.statusText || 'Server error'; }
       return { error: errData.error || "Failed to create user" };
     }
     const result = await res.json();
@@ -2329,7 +2338,7 @@ export async function createUser(data) {
       _db.users.push(result.user);
       try {
         localStorage.setItem(DB_KEY, JSON.stringify(_db));
-      } catch (e) {}
+      } catch (e) { }
       return { ...result.user, tempPassword: result.tempPassword };
     }
     return { error: result.error || "Invalid server response" };
@@ -2346,7 +2355,7 @@ export async function importUsersBulk(usersArray) {
       const sess = JSON.parse(sessionRaw);
       reqUserRole = sess.role;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   if (reqUserRole !== "superadmin" && reqUserRole !== "admin") {
     return { error: "Only administrators can bulk register users." };
@@ -2377,7 +2386,7 @@ export async function importUsersBulk(usersArray) {
       }
       try {
         localStorage.setItem(DB_KEY, JSON.stringify(_db));
-      } catch (e) {}
+      } catch (e) { }
       return result;
     }
     return { error: "Invalid server response" };
@@ -2399,7 +2408,7 @@ export function deleteUser(id) {
     _db.users = (_db.users || []).filter((u) => u.id !== id);
     _db.assignments = (_db.assignments || []).filter((a) => a.userId !== id);
     _db.notifications = (_db.notifications || []).filter((n) => n.userId !== id);
-    
+
     // Explicitly delete user from backend to free up email address
     let headers = { "Content-Type": "application/json" };
     try {
@@ -2408,7 +2417,7 @@ export function deleteUser(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.token) headers["Authorization"] = "Bearer " + u.token;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     fetch("/api/users/" + id, { method: "DELETE", headers }).catch(e => console.error(e));
 
@@ -2775,7 +2784,7 @@ export function createAssignment(userId, data, assignedBy) {
         x.type === data.type &&
         (data.type === "Reform Area"
           ? x.sectionId === data.sectionId ||
-            x.reformAreaId === data.reformAreaId
+          x.reformAreaId === data.reformAreaId
           : true) &&
         (data.type === "Action Point"
           ? x.actionPointId === data.actionPointId
@@ -2823,7 +2832,7 @@ export function createAssignmentsBulk(userId, assignmentsArray, assignedBy) {
         x.type === data.type &&
         (data.type === "Reform Area"
           ? x.sectionId === data.sectionId ||
-            x.reformAreaId === data.reformAreaId
+          x.reformAreaId === data.reformAreaId
           : true) &&
         (data.type === "Action Point"
           ? x.actionPointId === data.actionPointId
@@ -2886,7 +2895,7 @@ export function removeAssignment(id) {
         const u = JSON.parse(sessionRaw);
         if (u && u.username) removedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     _db.recycleBin.push({
       id:
@@ -2966,7 +2975,7 @@ export function getEditionStats(editionId) {
         apps = apps.filter((a) => a.status !== "Draft");
       }
     }
-  } catch (e) {}
+  } catch (e) { }
   const scores = apps
     .map((a) => calculateApplicationScore(a.id))
     .filter((s) => s > 0);
@@ -3118,7 +3127,7 @@ export function deleteGuideline(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     _db.recycleBin.push({
       id:
@@ -3510,7 +3519,7 @@ export function deleteDepartment(id) {
         const u = JSON.parse(sessUserRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     _db.recycleBin.push({
       id:
@@ -3751,7 +3760,7 @@ export function restoreFromRecycleBin(id) {
       const u = JSON.parse(sessionRaw);
       if (u && u.username) restoredBy = u.username;
     }
-  } catch (e) {}
+  } catch (e) { }
   addAuditLog(
     restoredBy,
     `Restored item from Recycle Bin: ${item.name} (${item.type})`,
@@ -3777,7 +3786,7 @@ export function deleteFromRecycleBin(id) {
         const u = JSON.parse(sessionRaw);
         if (u && u.username) deletedBy = u.username;
       }
-    } catch (e) {}
+    } catch (e) { }
     addAuditLog(
       deletedBy,
       `Permanently deleted item from Recycle Bin: ${item.name} (${item.type})`,
@@ -4054,7 +4063,7 @@ export function runDatabaseIntegrityCheck() {
 
   try {
     window.lastAuditErrorsCount = errors.length;
-  } catch (e) {}
+  } catch (e) { }
 
   return { valid: errors.length === 0, errors };
 }
@@ -4361,7 +4370,7 @@ export function repairDataIntegrity() {
   // Store stats in window so diagnostics panel can display them
   try {
     window.lastRepairStats = stats;
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // ─── Startup Score Repair ────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { userPanel, adminPanel, uiState } from '../../app.js';
 import { getCurrentUser } from '../auth/auth.js';
-import { getApplicationsByUser, getUnreadCount, getDb, getApplicationById, getAnswersByApplication, getEditions, getPendingAssignmentsCount, getEditionById, createApplication, addAuditLog, addNotification, getAssignments, calculateApplicationProgress, calculateApplicationScore, calculateApplicationMaxScore, getFieldById, getFieldsByEdition, forceSave, updateUser } from '../db/store.js';
+import { getApplicationsByUser, getUnreadCount, getDb, getApplicationById, getAnswersByApplication, getEditions, getPendingAssignmentsCount, getEditionById, createApplication, addAuditLog, addNotification, getAssignments, calculateApplicationProgress, calculateApplicationScore, calculateApplicationMaxScore, getFieldById, getFieldsByEdition, forceSave, updateUser, getSectionsByEdition, getFieldsBySection, isSectionAssignedToUser as isSectionAssignedToUserStore, isFieldAssignedToUser as isFieldAssignedToUserStore } from '../db/store.js';
 import { openApplicationForm, _timeAgo, _userFacingStatus, _statusClass } from '../panels/applicationForm.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
 import { renderUserDashboardEnhanced, renderTabbedApplicationWorkspace } from '../modules/advancedDashboard.js';
@@ -70,7 +70,7 @@ export function renderUserSidebar() {
         const secNum = (sec.num && sec.num !== 'undefined') ? sec.num : String(sec.orderIndex + 1);
         const secTitle = String((sec.name && sec.name !== 'undefined') ? sec.name : ((sec.title && sec.title !== 'undefined') ? sec.title : ''));
         return `
-          <a href="#" class="nav-item section-nav-item ${sec.id === activeSectionId ? 'active' : ''}" data-sec="${sec.id}" style="padding-left: 20px;">
+          <a href="#" class="nav-item section-nav-item ${sec.id === window.activeSectionId ? 'active' : ''}" data-sec="${sec.id}" style="padding-left: 20px;">
             <span class="nav-item-num" style="font-size:10px;min-width:28px;">S${secNum}</span>
             <span class="nav-item-text" style="font-size:13px;">${secTitle.replace(/^Section \d+:\s*/,'')}</span>
             <span class="nav-item-badge" style="margin-left:auto;font-size:11px;opacity:0.8;">${answered}/${fields.length}</span>
@@ -101,9 +101,9 @@ export function renderUserSidebar() {
   nav.querySelectorAll('.nav-item[data-sec]').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
-      activeSectionId = item.dataset.sec;
-      if (activeUserFormContainer) {
-        openApplicationForm(uiState.activeApplicationId, activeUserFormContainer);
+      window.activeSectionId = item.dataset.sec;
+      if (window.activeUserFormContainer) {
+        openApplicationForm(uiState.activeApplicationId, window.activeUserFormContainer);
       }
     });
   });

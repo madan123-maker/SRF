@@ -1,6 +1,6 @@
 import { adminPanel, userPanel, uiState } from '../../app.js';
 import { getCurrentUser, isSuperAdmin, isAdmin, login } from '../auth/auth.js';
-import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment } from '../db/store.js';
+import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment, getSectionsByEdition, getFieldsBySection } from '../db/store.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
 import { renderAdminAnalyticsDashboard } from '../modules/advancedDashboard.js';
 import { renderAssignedDetailsPanel } from '../panels/publisherPanel.js';
@@ -11,6 +11,17 @@ import { showToast } from '../ui/toastManager.js';
 import { showConfirm } from '../ui/confirmDialog.js';
 import { statesDistrictsData, allStates } from '../data/geoData.js';
 import { _statusClass, _statusLabel } from '../panels/applicationForm.js';
+import { initEditionManager } from '../modules/editionManager.js';
+import { NOTIFICATION_EVENTS } from '../db/schema.js';
+
+let activeEditionId = null;
+let currentAuditFilterUserId = '';
+let currentAuditFilterAdminId = '';
+let currentAuditFilterDistrict = '';
+let currentAuditFilterCategory = '';
+let currentAuditFilterStartDate = '';
+let currentAuditFilterEndDate = '';
+let currentAuditFilterUserSearch = '';
 
 
 export function renderAdminPortal() {
@@ -1642,6 +1653,9 @@ export function openExportEditionModal(onConfirm) {
 }
 
 export function renderAuditPanel(container) {
+  let restoreFocus = false;
+  let selectionStart = 0;
+
   const result = getAuditLogs({
     page: 1,
     pageSize: 100,
