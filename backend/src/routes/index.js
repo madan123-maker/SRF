@@ -1207,8 +1207,7 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
     }
 
     if (req.user.role === 'user') {
-      // Restrict users to their assigned editions, reform areas, questions, own data
-      const assignments = await Assignment.find({ userId: req.user.id }).lean();
+      const assignments = await prisma.assignment.findMany({ where: { userId: req.user.id } });
       const assignedEditionIds = [...new Set(assignments.map(a => a.editionId))];
 
       const editions = await prisma.edition.findMany({ where: { id: { in: assignedEditionIds }, status: 'published', isDeleted: false } });
@@ -1250,12 +1249,12 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
       const appIds = applications.map(a => a.id);
       const applicationAnswers = (await prisma.applicationAnswer.findMany()).map(a => a.data).filter(a => appIds.includes(a.applicationId));
 
-      const notifications = await Notification.find({ userId: req.user.id }).lean();
+      const notifications = await prisma.notification.findMany({ where: { userId: req.user.id } });
       const auditLogs = await prisma.auditLog.findMany({ where: { userId: req.user.id }, orderBy: { timestamp: 'desc' }, take: 2000 });
-      const schemaVersions = await SchemaVersion.find({ editionId: { $in: activeEdIds } }).lean();
-      const guidelines = await Guideline.find({ editionId: { $in: activeEdIds } }).lean();
-      const documentRules = await DocumentRule.find({ editionId: { $in: activeEdIds } }).lean();
-      const departments = await Department.find().lean();
+      const schemaVersions = (await prisma.schemaVersion.findMany()).map(x => x.data).filter(x => activeEdIds.includes(x.editionId));
+      const guidelines = (await prisma.guideline.findMany()).map(x => x.data).filter(x => activeEdIds.includes(x.editionId));
+      const documentRules = (await prisma.documentRule.findMany()).map(x => x.data).filter(x => activeEdIds.includes(x.editionId));
+      const departments = await prisma.department.findMany();
       const messagesRaw = await prisma.message.findMany({
         where: { OR: [{ senderId: req.user.id }, { receiverId: req.user.id }] }
       });
@@ -1264,8 +1263,13 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
         return m;
       });
 
-      const sanitizedProfile = { ...req.user };
-      delete sanitizedProfile.password;
+      const usersRawFull = await prisma.user.findMany();
+      const adminsRawFull = await prisma.admin.findMany();
+      const safeUsers = [...usersRawFull, ...adminsRawFull].map(u => {
+        const sanitized = { ...u };
+        delete sanitized.password;
+        return sanitized;
+      });
 
       return res.json({
         version: 3,
@@ -1274,7 +1278,7 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
         formFields,
         applications,
         applicationAnswers,
-        users: [sanitizedProfile],
+        users: safeUsers,
         notifications,
         assignments,
         auditLogs,
@@ -1807,7 +1811,9 @@ router.post('/api/db', verifySession, async (req, res) => {
         }
       }
       if (payload.users) {
-        const dbUsers = await User.find({}).lean();
+        const usersRawFull = await prisma.user.findMany();
+        const adminsRawFull = await prisma.admin.findMany();
+        const dbUsers = [...usersRawFull, ...adminsRawFull];
         for (const u of payload.users) {
           const matching = dbUsers.find(x => x.id === u.id);
           if (!matching || matching.role !== u.role || matching.username !== u.username) {
@@ -1830,16 +1836,22 @@ router.post('/api/db', verifySession, async (req, res) => {
       // 2. Validate answers and check alignment
       if (payload.applicationAnswers) {
         for (const ans of payload.applicationAnswers) {
-          const app = payload.applications?.find(a => a.id === ans.applicationId) ||
-            await Application.findOne({ id: ans.applicationId }, null, options).lean();
+          let app = payload.applications?.find(a => a.id === ans.applicationId);
+          if (!app) {
+            const found = await prisma.application.findFirst({ where: { id: ans.applicationId } });
+            app = found ? found.data : null;
+          }
           if (!app) continue;
           if (app.userId !== req.user.id) {
             if (useTransaction) { await session.abortTransaction(); session.endSession(); }
             return res.status(403).json({ error: 'Access denied: Cannot modify answers for other applications' });
           }
 
-          const field = payload.formFields?.find(f => f.id === ans.fieldId) ||
-            await FormField.findOne({ id: ans.fieldId }, null, options).lean();
+          let field = payload.formFields?.find(f => f.id === ans.fieldId);
+          if (!field) {
+            const found = await prisma.formField.findFirst({ where: { id: ans.fieldId } });
+            field = found ? found.data : null;
+          }
           if (!field) continue;
 
           if (!await isFieldAssignedToUserBackend(field, req.user, payload)) {
