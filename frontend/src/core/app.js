@@ -3,47 +3,51 @@
    Dynamic SRF Management Platform
    ========================================================================== */
 
-import { runDatabaseIntegrityCheck, repairDataIntegrity, isAnswerNormalizerValid, isQuestionFilled, getLockStatus, acquireLock, releaseLock } from './src/db/store.js';
-import { statesDistrictsData, allStates } from './src/data/geoData.js';
-import { initStore, getEditions, getEditionById, getSectionsByEdition, getFieldsByEdition,
-         getFieldsBySection, getApplicationsByUser, createApplication,
-         saveAnswer, submitApplication, getAnswersByApplication,
-         addNotification, getNotifications, getUnreadCount,
-         markAllNotificationsRead, addAuditLog, getEditionStats,
-         getApplicationById, updateApplication, forceSave, calculateApplicationScore, calculateApplicationMaxScore,
-         getUsers, createUser, importUsersBulk, getUserById, getAssignments, getAllAssignments, createAssignment, createAssignmentsBulk,
-         updateAssignment, removeAssignment, getReformAreas, getAuditLogs, getGuidelines,
-         createGuideline, deleteGuideline, getDocumentRules, submitReformArea, getDb, deleteUser,
-         addReassignmentHistory, getReassignmentHistory, getPendingAssignmentsCount, isSectionAssignedToUser as isSectionAssignedToUserStore, isFieldAssignedToUser as isFieldAssignedToUserStore,
-         saveAnswerCompliance, submitQuestion, updateUser, getFieldById, updateField,
-         getDepartments, createDepartment, updateDepartment, deleteDepartment,
-         getMessagesBetween, getUnreadMessageCountFrom, sendMessage, markMessagesRead,
-         getRecycleBin, addToRecycleBin, restoreFromRecycleBin, deleteFromRecycleBin,
-         calculateApplicationProgress } from './src/db/store.js';
-import { initAuth, login, logout, getCurrentUser, isAdmin, isSuperAdmin,
-         isUser, getRoleInfo, getRoleBadgeHtml } from './src/auth/auth.js';
-import { hasPermission } from './src/auth/rbac.js';
-import { initToasts, showToast } from './src/ui/toastManager.js';
-import { showConfirm, showAlert, showPrompt, showFileViewer } from './src/ui/confirmDialog.js';
-import { dataURLtoBlob, dataURLtoObjectURL } from './src/ui/fileUtil.js';
+import { runDatabaseIntegrityCheck, repairDataIntegrity, isAnswerNormalizerValid, isQuestionFilled, getLockStatus, acquireLock, releaseLock } from '../db/store.js';
+import { statesDistrictsData, allStates } from '../data/geoData.js';
+import {
+  initStore, getEditions, getEditionById, getSectionsByEdition, getFieldsByEdition,
+  getFieldsBySection, getApplicationsByUser, createApplication,
+  saveAnswer, submitApplication, getAnswersByApplication,
+  addNotification, getNotifications, getUnreadCount,
+  markAllNotificationsRead, addAuditLog, getEditionStats,
+  getApplicationById, updateApplication, forceSave, calculateApplicationScore, calculateApplicationMaxScore,
+  getUsers, createUser, importUsersBulk, getUserById, getAssignments, getAllAssignments, createAssignment, createAssignmentsBulk,
+  updateAssignment, removeAssignment, getReformAreas, getAuditLogs, getGuidelines,
+  createGuideline, deleteGuideline, getDocumentRules, submitReformArea, getDb, deleteUser,
+  addReassignmentHistory, getReassignmentHistory, getPendingAssignmentsCount, isSectionAssignedToUser as isSectionAssignedToUserStore, isFieldAssignedToUser as isFieldAssignedToUserStore,
+  saveAnswerCompliance, submitQuestion, updateUser, getFieldById, updateField,
+  getDepartments, createDepartment, updateDepartment, deleteDepartment,
+  getMessagesBetween, getUnreadMessageCountFrom, sendMessage, markMessagesRead,
+  getRecycleBin, addToRecycleBin, restoreFromRecycleBin, deleteFromRecycleBin,
+  calculateApplicationProgress
+} from '../db/store.js';
+import {
+  initAuth, login, logout, getCurrentUser, isAdmin, isSuperAdmin,
+  isUser, getRoleInfo, getRoleBadgeHtml
+} from '../auth/auth.js';
+import { hasPermission } from '../auth/rbac.js';
+import { initToasts, showToast } from '../ui/toastManager.js';
+import { showConfirm, showAlert, showPrompt, showFileViewer } from '../ui/confirmDialog.js';
+import { dataURLtoBlob, dataURLtoObjectURL } from '../ui/fileUtil.js';
 
-import { initEditionManager } from './src/modules/editionManager.js';
-import { renderApplicationTracker, renderApplicationDetail } from './src/modules/applicationManager.js';
-import { NOTIFICATION_EVENTS } from './src/db/schema.js';
-import { initFormEditor } from './formEditor.js';
-import { renderUserDashboardEnhanced, renderAdminAnalyticsDashboard, renderTabbedApplicationWorkspace } from './src/modules/advancedDashboard.js';
-import { renderTaskReviewPanel } from './src/modules/taskReviewManager.js';
-import { renderGovernancePanel } from './src/modules/governanceManager.js';
-import { boot, cleanupAllHeartbeats, debounce, postJson, checkExistingSession, pushToNavHistory, updateGlobalBackButton, goBack, showLandingView, initGlobalSearch, initPortal } from './src/core/bootstrap.js';
-import { openFirstLoginResetModal, openForgotPasswordModal, openRequestNodalModal, openChangePasswordModal, sendPasswordOtp } from './src/auth/authModals.js';
-import { renderAdminPortal, renderAdminSidebar, switchAdminTab, openEditionTracker, renderSchemaEditorAdmin, renderUsersPanel, openBulkImportUsersModal, openCreateUserModal, openCreateAdminModal, openAssignmentModal, openEditUserModal, renderGuidelinesPanel, openAddGuidelineModal, exportAllSubmissionsExcelFunc, openExportEditionModal, renderAuditPanel, renderSettingsPanel, renderDepartmentsPanel, openCreateDepartmentModal, openEditDepartmentModal } from './src/panels/adminPanel.js';
-import { renderUserPortal, renderUserSidebar, switchUserTab, renderApplyPage, startNewApplication, renderAssignedEditionsPage, isAssignmentValid, isSectionAssignedToUser, isFieldAssignedToUser, getGuidelinePageForQuestion, renderExploreApplications, renderUserAppsFiltered, openApplicationDetail, renderUserProfilePage } from './src/panels/userPanel.js';
-import { renderPublisherPanel, renderAssignedDetailsPanel, openReassignModal } from './src/panels/publisherPanel.js';
-import { renderNotificationsPage, updateNotificationBadge, showNotificationsDropdown, openNotificationsModal } from './src/panels/notifications.js';
-import { openProfileModal, renderMessagesTab } from './src/panels/profileMessages.js';
-import { openRecycleBinViewModal, renderRecycleBinPanel } from './src/panels/recycleBin.js';
-import { renderDiagnosticsPanel } from './src/panels/diagnostics.js';
-import { openApplicationForm, renderUserElementInput, renderFieldInput, _userFacingStatus, _timeAgo, _statusClass, _statusLabel } from './src/panels/applicationForm.js';
+import { initEditionManager } from '../modules/editionManager.js';
+import { renderApplicationTracker, renderApplicationDetail } from '../modules/applicationManager.js';
+import { NOTIFICATION_EVENTS } from '../db/schema.js';
+import { initFormEditor } from '../modules/formEditor.js';
+import { renderUserDashboardEnhanced, renderAdminAnalyticsDashboard, renderTabbedApplicationWorkspace } from '../modules/advancedDashboard.js';
+import { renderTaskReviewPanel } from '../modules/taskReviewManager.js';
+import { renderGovernancePanel } from '../modules/governanceManager.js';
+import { boot, cleanupAllHeartbeats, debounce, postJson, checkExistingSession, pushToNavHistory, updateGlobalBackButton, goBack, showLandingView, initGlobalSearch, initPortal } from '../core/bootstrap.js';
+import { openFirstLoginResetModal, openForgotPasswordModal, openRequestNodalModal, openChangePasswordModal, sendPasswordOtp } from '../auth/authModals.js';
+import { renderAdminPortal, renderAdminSidebar, switchAdminTab, openEditionTracker, renderSchemaEditorAdmin, renderUsersPanel, openBulkImportUsersModal, openCreateUserModal, openCreateAdminModal, openAssignmentModal, openEditUserModal, renderGuidelinesPanel, openAddGuidelineModal, exportAllSubmissionsExcelFunc, openExportEditionModal, renderAuditPanel, renderSettingsPanel, renderDepartmentsPanel, openCreateDepartmentModal, openEditDepartmentModal } from '../panels/adminPanel.js';
+import { renderUserPortal, renderUserSidebar, switchUserTab, renderApplyPage, startNewApplication, renderAssignedEditionsPage, isAssignmentValid, isSectionAssignedToUser, isFieldAssignedToUser, getGuidelinePageForQuestion, renderExploreApplications, renderUserAppsFiltered, openApplicationDetail, renderUserProfilePage } from '../panels/userPanel.js';
+import { renderPublisherPanel, renderAssignedDetailsPanel, openReassignModal } from '../panels/publisherPanel.js';
+import { renderNotificationsPage, updateNotificationBadge, showNotificationsDropdown, openNotificationsModal } from '../panels/notifications.js';
+import { openProfileModal, renderMessagesTab } from '../panels/profileMessages.js';
+import { openRecycleBinViewModal, renderRecycleBinPanel } from '../panels/recycleBin.js';
+import { renderDiagnosticsPanel } from '../panels/diagnostics.js';
+import { openApplicationForm, renderUserElementInput, renderFieldInput, _userFacingStatus, _timeAgo, _statusClass, _statusLabel } from '../panels/applicationForm.js';
 
 // Expose globals for external modules
 window.switchUserTab = switchUserTab;
@@ -57,18 +61,14 @@ window.boot = boot;
 
 // Global Fetch Hook to inject custom session headers and route API calls
 const originalFetch = window.fetch;
-window.fetch = function(url, options) {
+window.fetch = function (url, options) {
   options = options || {};
   options.headers = options.headers || {};
   try {
-    const sessionRaw = sessionStorage.getItem('srf_session_v2');
-    if (sessionRaw) {
-      const sess = JSON.parse(sessionRaw);
-      if (sess && sess.token) {
-        options.headers['Authorization'] = 'Bearer ' + sess.token;
-      }
-    }
-  } catch (e) {}
+    // Explicitly configure Fetch to use pure Cookies. This allows the backend to utilize 'httpOnly' JWT tokens securely.
+    // XSS Mitigation: We no longer store the JWT directly in the DOM or localStorage arrays.
+    options.credentials = 'include';
+  } catch (e) { }
 
   // Prefix URL with backend address if VITE_RENDER_BACKEND is configured and it is an API call
   if (url && (url.startsWith('/api/') || url === '/api')) {
@@ -95,7 +95,7 @@ export const uiState = { activeAdminTab: 'editions', activeUserTab: 'dashboard',
 window.workspaceLock = false;
 
 // Global dynamic real-time refresh function
-window.refreshCurrentView = function() {
+window.refreshCurrentView = function () {
   const updateSidebarOnly = () => {
     try {
       const user = getCurrentUser();
@@ -116,24 +116,24 @@ window.refreshCurrentView = function() {
     updateSidebarOnly();
     return;
   }
-  
+
   // Prevent refreshing if the user is typing in a form or review workspace
   if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT', 'OPTION'].includes(document.activeElement.tagName)) {
     updateSidebarOnly();
     return;
   }
-  
+
   // Prevent refreshing if task review detail workspace, user form, active uploads, or document preview is active
-  if (document.querySelector('.tr-workspace-layout') || 
-      document.getElementById('tr-preview-container') || 
-      document.getElementById('workspace-tabs-content') ||
-      document.querySelector('.workspace-layout') ||
-      document.getElementById('form-questions') ||
-      document.querySelector('.user-form-container') ||
-      document.querySelector('.modal-backdrop-custom') ||
-      document.querySelector('.modal') ||
-      document.querySelector('.upload-active') ||
-      document.getElementById('btn-back-tracker')) {
+  if (document.querySelector('.tr-workspace-layout') ||
+    document.getElementById('tr-preview-container') ||
+    document.getElementById('workspace-tabs-content') ||
+    document.querySelector('.workspace-layout') ||
+    document.getElementById('form-questions') ||
+    document.querySelector('.user-form-container') ||
+    document.querySelector('.modal-backdrop-custom') ||
+    document.querySelector('.modal') ||
+    document.querySelector('.upload-active') ||
+    document.getElementById('btn-back-tracker')) {
     updateSidebarOnly();
     return;
   }
@@ -153,7 +153,7 @@ window.refreshCurrentView = function() {
         updateSidebarOnly();
         return;
       }
-      
+
       if (uiState.activeAdminTab) {
         switchAdminTab(uiState.activeAdminTab);
       }
@@ -162,7 +162,7 @@ window.refreshCurrentView = function() {
         switchUserTab(uiState.activeUserTab);
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 };
 
 const throttledSyncRefresh = debounce(() => {
@@ -180,10 +180,10 @@ window.navHistory = [];
 window.isNavigatingBack = false;
 
 // ─── DOM REFERENCES ────────────────────────────────────────────────────────
-export const loginScreen  = document.getElementById('login-screen');
+export const loginScreen = document.getElementById('login-screen');
 export const portalScreen = document.getElementById('portal-screen');
-export const adminPanel   = document.getElementById('admin-panel');
-export const userPanel    = document.getElementById('user-panel');
+export const adminPanel = document.getElementById('admin-panel');
+export const userPanel = document.getElementById('user-panel');
 
 document.getElementById('nav-btn-home').addEventListener('click', () => showLandingView('hero'));
 document.getElementById('nav-btn-login').addEventListener('click', () => showLandingView('login'));
@@ -222,11 +222,11 @@ if (toggleBtn && pwdInput) {
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  
+
   const submitBtn = document.getElementById('btn-login-submit');
   const btnText = document.getElementById('login-btn-text');
   const spinner = document.getElementById('login-spinner');
-  
+
   if (submitBtn) submitBtn.disabled = true;
   if (btnText) btnText.textContent = 'Processing...';
   if (spinner) spinner.style.display = 'block';
@@ -247,12 +247,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       return;
     }
     document.getElementById('password').value = '';
-    
+
     // Reset button state before navigating
     if (submitBtn) submitBtn.disabled = false;
     if (btnText) btnText.textContent = 'Sign In';
     if (spinner) spinner.style.display = 'none';
-    
+
     if (result.user.mustResetPassword) {
       openFirstLoginResetModal(result.user);
     } else {
@@ -336,10 +336,10 @@ window.chatPollingInterval = null;
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL RIPPLE ANIMATION ON BUTTONS
 // ═══════════════════════════════════════════════════════════════════════════
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
   const btn = e.target.closest('.btn');
   if (!btn) return;
-  
+
   const circle = document.createElement('span');
   const diameter = Math.max(btn.clientWidth, btn.clientHeight);
   const radius = diameter / 2;
@@ -356,8 +356,8 @@ document.addEventListener('click', function(e) {
   }
 
   btn.appendChild(circle);
-  
+
   setTimeout(() => {
-    if(circle && circle.parentNode) circle.remove();
+    if (circle && circle.parentNode) circle.remove();
   }, 600);
 });

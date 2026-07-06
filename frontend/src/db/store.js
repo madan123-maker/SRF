@@ -39,7 +39,7 @@ export async function initStore() {
     const res = await authFetch("/api/db");
     if (res.ok) {
       _db = await res.json();
-      console.log("[Store] Database loaded from MongoDB backend API.");
+      console.log("[Store] Database loaded from Backend API.");
     } else {
       console.warn(
         "[Store] Failed to load database from API, trying localStorage fallback.",
@@ -373,6 +373,11 @@ function _migrateFromV2() {
 }
 
 function _ensureDefaultEdition() {
+  const isDeleted = (_db.recycleBin || []).some(
+    (r) => r.type === "edition" && r.editionId === DEFAULT_SRF_6_EDITION.id
+  );
+  if (isDeleted) return;
+
   if (!_db.editions.find((e) => e.id === DEFAULT_SRF_6_EDITION.id)) {
     _db.editions.push({ ...DEFAULT_SRF_6_EDITION });
   }
@@ -607,7 +612,7 @@ async function _save() {
 
   try {
     if (_db) {
-      // Write to API (MongoDB)
+      // Write to Backend API
       try {
         const res = await authFetch("/api/db", {
           method: "POST",
@@ -630,13 +635,13 @@ async function _save() {
             errorBody = { error: '(response body was not JSON)' };
           }
           console.error(
-            `[Store] Failed to save database to MongoDB API. Status: ${res.status}`,
+            `[Store] Failed to save database to Backend API. Status: ${res.status}`,
             errorBody,
           );
         }
       } catch (e) {
         console.error(
-          "[Store] Network error saving database to MongoDB API:",
+          "[Store] Network error saving database to Backend API:",
           e,
         );
       }
@@ -821,9 +826,17 @@ export function updateEdition(id, data) {
   return _db.editions[idx];
 }
 
+export function getDeletedEditions() {
+  return (_db.recycleBin || [])
+    .filter(rb => rb.type === "edition")
+    .map(rb => rb.editionData)
+    .filter(Boolean);
+}
+
 export function deleteEdition(id) {
-  const edition = _db.editions.find((e) => e.id === id);
-  if (edition) {
+  const idx = (_db.editions || []).findIndex((e) => e.id === id);
+  if (idx !== -1) {
+    const edition = _db.editions[idx];
     edition.isDeleted = true;
     edition.deletedAt = new Date().toISOString();
 
@@ -859,6 +872,9 @@ export function deleteEdition(id) {
       deletedAt: new Date().toISOString(),
       deletedBy: edition.deletedBy || "admin",
     });
+
+    // TRUE HARD DELETE: Remove from local active array so POST /api/db deletes natively from PostgreSQL
+    _db.editions.splice(idx, 1);
 
     // Cascade delete assignments
     _db.assignments = (_db.assignments || []).filter((a) => a.editionId !== id);
@@ -897,11 +913,30 @@ export function deleteEdition(id) {
 }
 
 export function restoreEdition(id) {
-  const edition = _db.editions.find((e) => e.id === id);
-  if (edition) {
+  const recycleItem = (_db.recycleBin || []).find(r => r.type === "edition" && r.editionId === id);
+  if (recycleItem) {
+    const edition = recycleItem.editionData;
     edition.isDeleted = false;
     delete edition.deletedAt;
     delete edition.deletedBy;
+
+    // Restore edition exactly as active
+    if (!_db.editions) _db.editions = [];
+    _db.editions.push(edition);
+
+    // Re-hydrate children
+    if (recycleItem.reformAreasData) {
+      _db.reformAreas = [...(_db.reformAreas || []), ...recycleItem.reformAreasData];
+    }
+    if (recycleItem.fieldsData) {
+      _db.formFields = [...(_db.formFields || []), ...recycleItem.fieldsData];
+    }
+    if (recycleItem.appsData) {
+      _db.applications = [...(_db.applications || []), ...recycleItem.appsData];
+    }
+
+    // Purge from RecycleBin so it disappears natively from Postgres too
+    _db.recycleBin = _db.recycleBin.filter(r => r.id !== recycleItem.id);
     _save();
   }
 }
@@ -2288,6 +2323,57 @@ export function getQuestionReviewQueue(editionId, filters = {}) {
 // ═══════════════════════════════════════════════════════════════
 // USERS
 // ═══════════════════════════════════════════════════════════════
+export async function fetchAllAdmins() {
+  const res = await authFetch('/api/admins');
+  if (!res.ok) throw new Error('Failed to fetch admins');
+  const data = await res.json();
+  return data.admins;
+}
+
+export async function deleteAdminAPI(adminId) {
+  const res = await authFetch(`/api/admins/${adminId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete admin');
+  }
+  return await res.json();
+}
+
+export async function updateAdminAPI(adminId, updatedData) {
+  const res = await authFetch(`/api/admins/${adminId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updatedData)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update admin');
+  }
+  return await res.json();
+}
+
+export async function deleteUserAPI(userId) {
+  const res = await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete user');
+  }
+  return await res.json();
+}
+
+export async function updateUserAPI(userId, updatedData) {
+  const res = await authFetch(`/api/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updatedData)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update user');
+  }
+  return await res.json();
+}
+
 export function getUsers() {
   return _db.users || [];
 }
@@ -2560,7 +2646,14 @@ export function addAuditLog(
   if (!_db.auditLogs) _db.auditLogs = [];
   _db.auditLogs.unshift(log);
   if (_db.auditLogs.length > 2000) _db.auditLogs = _db.auditLogs.slice(0, 2000);
-  scheduleSave();
+
+  // Directly asynchronous native push
+  authFetch('/api/audit-logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(log)
+  }).catch(e => console.warn('[Store] Failed to POST audit log directly:', e));
+
   return log;
 }
 export function getAuditLogs(filters = {}) {

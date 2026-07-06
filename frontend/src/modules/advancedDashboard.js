@@ -1,4 +1,4 @@
-import { uiState } from '../../app.js';
+import { uiState } from '../core/app.js';
 /* ==========================================================================
    advancedDashboard.js — Compliance Monitoring & Intelligence Dashboard Engine
    Dynamic SRF Management Platform — Enterprise Edition

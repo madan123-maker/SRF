@@ -3,8 +3,8 @@
    Dynamic SRF Management Platform
    ========================================================================== */
 
-import { showToast } from './src/ui/toastManager.js';
-import { showConfirm, showAlert } from './src/ui/confirmDialog.js';
+import { showToast } from '../ui/toastManager.js';
+import { showConfirm, showAlert } from '../ui/confirmDialog.js';
 
 let activeSectionId = null;
 let activeApIdx = 0;

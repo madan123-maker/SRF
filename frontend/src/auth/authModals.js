@@ -13,7 +13,7 @@ export function openFirstLoginResetModal(userObj) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.style.zIndex = '10005';
-  
+
   backdrop.innerHTML = `
     <div class="modal-card-custom animate-modal-in" style="max-width:420px; width:90%; padding:32px; border-radius:24px; text-align:left; background:#ffffff; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.25);">
       <h3 class="modal-title-custom" style="margin-bottom:12px; font-family:var(--font-title); font-weight:800; font-size:22px; color:#0f172a;">Reset Password</h3>
@@ -58,31 +58,31 @@ export function openFirstLoginResetModal(userObj) {
       #btn-submit-first-reset-pwd:active { transform: translateY(0); }
     </style>
   `;
-  
+
   document.body.appendChild(backdrop);
-  
+
   const newPwdInput = backdrop.querySelector('#first-reset-pwd-new');
   const confirmPwdInput = backdrop.querySelector('#first-reset-pwd-confirm');
-  
+
   // Show/Hide Toggle Logic
   const toggleVisibility = (inputEl, btnEl) => {
     const isPassword = inputEl.type === 'password';
     inputEl.type = isPassword ? 'text' : 'password';
-    btnEl.innerHTML = isPassword 
+    btnEl.innerHTML = isPassword
       ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
       : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
   };
-  
-  backdrop.querySelector('#toggle-pwd-new').addEventListener('click', function() {
+
+  backdrop.querySelector('#toggle-pwd-new').addEventListener('click', function () {
     toggleVisibility(newPwdInput, this);
   });
-  
-  backdrop.querySelector('#toggle-pwd-confirm').addEventListener('click', function() {
+
+  backdrop.querySelector('#toggle-pwd-confirm').addEventListener('click', function () {
     toggleVisibility(confirmPwdInput, this);
   });
-  
+
   // Copy Password Logic
-  backdrop.querySelector('#copy-pwd-new').addEventListener('click', function() {
+  backdrop.querySelector('#copy-pwd-new').addEventListener('click', function () {
     if (newPwdInput.value) {
       navigator.clipboard.writeText(newPwdInput.value).then(() => {
         const originalHtml = this.innerHTML;
@@ -95,11 +95,11 @@ export function openFirstLoginResetModal(userObj) {
   const submitBtn = backdrop.querySelector('#btn-submit-first-reset-pwd');
   const btnText = submitBtn.querySelector('.btn-text');
   const spinner = submitBtn.querySelector('.spinner-icon');
-  
+
   submitBtn.addEventListener('click', async () => {
     const newPwd = newPwdInput.value;
     const confirmPwd = confirmPwdInput.value;
-    
+
     if (!newPwd || !confirmPwd) {
       showToast('Please fill in all password fields.', 'error');
       return;
@@ -112,29 +112,29 @@ export function openFirstLoginResetModal(userObj) {
       showToast('Password must be at least 3 characters long.', 'error');
       return;
     }
-    
+
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.8';
     btnText.textContent = 'Updating...';
     spinner.style.display = 'block';
-    
+
     try {
       await postJson('/api/change-password', { userId: userObj.id, newPassword: newPwd });
       updateUser(userObj.id, { password: newPwd, mustResetPassword: false });
       addAuditLog(userObj.id, 'Reset temporary password on first login', 'auth', userObj.id);
       showToast('Password updated successfully! Logging you in...', 'success');
-      
+
       // Add success animation to button
       submitBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
       btnText.textContent = 'Success!';
       spinner.style.display = 'none';
-      
+
       setTimeout(() => {
         backdrop.remove();
         initPortal();
       }, 800);
-      
-    } catch(err) {
+
+    } catch (err) {
       showToast(err.message || 'Failed to update password.', 'error');
       submitBtn.disabled = false;
       submitBtn.style.opacity = '1';
@@ -148,11 +148,11 @@ export function openForgotPasswordModal() {
   let step = 1;
   let userId = '';
   let maskedEmail = '';
-  
+
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.style.zIndex = '10005';
-  
+
   const renderStep = () => {
     let html = '';
     if (step === 1) {
@@ -225,7 +225,7 @@ export function openForgotPasswordModal() {
         const sendBtn = document.getElementById('btn-recovery-send');
         const btnText = sendBtn.querySelector('.btn-text');
         const spinner = sendBtn.querySelector('.spinner-icon');
-        
+
         sendBtn.disabled = true;
         sendBtn.style.opacity = '0.8';
         btnText.textContent = 'Sending...';
@@ -249,11 +249,11 @@ export function openForgotPasswordModal() {
       });
     } else if (step === 2) {
       backdrop.querySelectorAll('.toggle-rec-pwd').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
           const input = document.getElementById(this.dataset.target);
           const isPassword = input.type === 'password';
           input.type = isPassword ? 'text' : 'password';
-          this.innerHTML = isPassword 
+          this.innerHTML = isPassword
             ? '<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
             : '<svg class="eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
         });
@@ -293,7 +293,7 @@ export function openForgotPasswordModal() {
           await postJson('/api/reset-password', { userId, otp, newPassword });
           try {
             updateUser(userId, { password: newPassword, mustResetPassword: false });
-          } catch(e) {}
+          } catch (e) { }
           showToast('Password reset successfully! Please sign in.', 'success');
           backdrop.remove();
         } catch (err) {
@@ -364,7 +364,7 @@ export function openRequestNodalModal() {
   `;
 
   document.body.appendChild(backdrop);
-  
+
   const form = backdrop.querySelector('#public-register-form');
   const cancelBtn = backdrop.querySelector('#btn-pub-cancel');
   const districtSelect = backdrop.querySelector('#pub-district');
@@ -389,7 +389,7 @@ export function openRequestNodalModal() {
   };
 
   cancelBtn.addEventListener('click', close);
-  
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = usernameInput.value.replace(/\s+/g, '').toLowerCase();
@@ -411,7 +411,7 @@ export function openRequestNodalModal() {
       if (res.success && res.user) {
         if (!_db.users) _db.users = [];
         _db.users.push(res.user);
-        try { localStorage.setItem(DB_KEY, JSON.stringify(_db)); } catch(e) {}
+        try { localStorage.setItem(DB_KEY, JSON.stringify(_db)); } catch (e) { }
       }
 
       showToast('Registration request successful! Your welcome credentials have been emailed to you.', 'success');
@@ -427,7 +427,7 @@ export function openRequestNodalModal() {
 export function openChangePasswordModal() {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
-  const fullUserObj = getUserById(currentUser.id);
+  const fullUserObj = getUserById(currentUser.id) || currentUser;
   if (!fullUserObj) return;
 
   let step = 1;
@@ -435,11 +435,11 @@ export function openChangePasswordModal() {
   let otpGeneratedAt = 0;
   let otpCooldown = 0;
   let otpTimerInterval = null;
-  
+
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.style.zIndex = '10000';
-  
+
   const renderStepContent = () => {
     let content = '';
     if (step === 1) {
@@ -485,7 +485,7 @@ export function openChangePasswordModal() {
         </div>
       `;
     }
-    
+
     backdrop.querySelector('.modal-card-custom').innerHTML = content;
     attachStepListeners();
   };
@@ -534,17 +534,17 @@ export function openChangePasswordModal() {
         startCooldownTimer();
         const btn = document.getElementById('btn-send-otp');
         if (btn) btn.disabled = true;
-        
+
         sendPasswordOtp(fullUserObj.email, generatedOtp, 'Password Change Request', fullUserObj.id)
-        .then(() => {
-          showToast(`OTP Code sent to ${fullUserObj.email}!`, 'success');
-          step = 2;
-          renderStepContent();
-        })
-        .catch(err => {
-          console.error('Failed to send OTP email:', err);
-          showToast(`Failed to send OTP: ${err.message}`, 'error');
-        });
+          .then(() => {
+            showToast(`OTP Code sent to ${fullUserObj.email}!`, 'success');
+            step = 2;
+            renderStepContent();
+          })
+          .catch(err => {
+            console.error('Failed to send OTP email:', err);
+            showToast(`Failed to send OTP: ${err.message}`, 'error');
+          });
       });
     } else if (step === 2) {
       document.getElementById('btn-back-step-1').addEventListener('click', () => {
@@ -556,15 +556,15 @@ export function openChangePasswordModal() {
         generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
         otpGeneratedAt = Date.now();
         startCooldownTimer();
-        
+
         sendPasswordOtp(fullUserObj.email, generatedOtp, 'Password Change Request (Resend)', fullUserObj.id)
-        .then(() => {
-          showToast(`OTP code resent to ${fullUserObj.email}`, 'success');
-        })
-        .catch(err => {
-          console.error('Failed to resend OTP email:', err);
-          showToast(`Failed to resend OTP: ${err.message}`, 'error');
-        });
+          .then(() => {
+            showToast(`OTP code resent to ${fullUserObj.email}`, 'success');
+          })
+          .catch(err => {
+            console.error('Failed to resend OTP email:', err);
+            showToast(`Failed to resend OTP: ${err.message}`, 'error');
+          });
       });
       document.getElementById('btn-verify-otp').addEventListener('click', () => {
         const inputOtp = document.getElementById('change-pwd-otp').value.replace(/\s+/g, '');
@@ -615,7 +615,7 @@ export function openChangePasswordModal() {
           addAuditLog(currentUser.id, 'Changed password via email OTP authentication', 'auth', currentUser.id);
           showToast('Password changed successfully!', 'success');
           backdrop.remove();
-        } catch(err) {
+        } catch (err) {
           showToast(err.message || 'Failed to update password.', 'error');
           submitBtn.disabled = false;
           submitBtn.textContent = 'Change Password';

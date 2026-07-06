@@ -34,7 +34,7 @@ export async function login(username, password) {
       },
       body: JSON.stringify({ username, password })
     });
-    
+
     if (!res.ok) {
       const errData = await res.json();
       return { success: false, error: errData.error || 'Invalid username or password.' };
@@ -42,9 +42,10 @@ export async function login(username, password) {
 
     const resData = await res.json();
     const user = resData.user;
-    const token = resData.token;
+    // We intentionally discard resData.token here. 
+    // The backend successfully issued an isolated HttpOnly cookie which the browser native handles!
 
-    _currentUser = { ...user, password: undefined, token };
+    _currentUser = { ...user, password: undefined };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(_currentUser));
 
     // Re-run initStore to fetch role-filtered database state

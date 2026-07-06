@@ -1,4 +1,4 @@
-import { loginScreen, portalScreen, adminPanel, userPanel, uiState } from '../../app.js';
+import { loginScreen, portalScreen, adminPanel, userPanel, uiState } from './app.js';
 import { releaseLock, initStore, getDb, getEditions, getAssignments, getEditionById, getAllAssignments, getUserById, getUsers, getApplicationById, getApplicationsByUser, addAuditLog } from '../db/store.js';
 import { initAuth, getCurrentUser, getRoleInfo, isAdmin, isSuperAdmin } from '../auth/auth.js';
 import { initToasts } from '../ui/toastManager.js';
@@ -30,9 +30,9 @@ export async function cleanupAllHeartbeats() {
 }
 
 export async function boot() {
+  initAuth();
   await initStore();
   checkExistingSession();
-  initAuth();
   initToasts();
   renderDiagnosticsPanel();
 
@@ -47,37 +47,20 @@ export async function boot() {
     }
   }, 1000);
 
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'srf_platform_v3') {
-      throttledStorageRefresh();
-    }
-  });
+  // Cross-tab storage listeners disabled to prevent infinite repair-sync loops
+  // window.addEventListener('storage', (e) => {
+  //   if (e.key === 'srf_platform_v3') {
+  //     throttledStorageRefresh();
+  //   }
+  // });
 
-  // Background auto-refresh for Admins and Reviewers to fetch new submissions instantly
-  setInterval(async () => {
-    try {
-      const user = getCurrentUser();
-      if (user && ['admin', 'reviewer', 'superadmin'].includes(user.role)) {
-        if (document.visibilityState === 'visible') {
-          const db = getDb();
-          const oldAppsStr = JSON.stringify((db?.applications || []).map(a => ({ id: a.id, status: a.status, updatedAt: a.updatedAt })));
-          await initStore();
-          const newDb = getDb();
-          const newAppsStr = JSON.stringify((newDb?.applications || []).map(a => ({ id: a.id, status: a.status, updatedAt: a.updatedAt })));
-          if (oldAppsStr !== newAppsStr && window.refreshCurrentView) {
-            window.refreshCurrentView();
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Admin Auto-Refresh] Background sync failed:', e);
-    }
-  }, 6000); // Poll every 6 seconds for high responsiveness
+  // Background auto-refresh disabled per user request to prevent continuous refresh loops
+  // setInterval(async () => { ... }, 6000);
 }
 
 export function debounce(func, wait) {
   let timeout;
-  return function(...args) {
+  return function (...args) {
     const context = this;
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(context, args), wait);
@@ -109,7 +92,7 @@ export function goBack() {
   window.navHistory.pop(); // pop current state
   const prev = window.navHistory[window.navHistory.length - 1];
   if (!prev) return;
-  
+
   window.isNavigatingBack = true;
   if (prev.role === 'admin') {
     if (prev.tab === 'tracker' && prev.editionId) {
@@ -442,10 +425,25 @@ export function initPortal() {
   document.getElementById('user-info-bubble')?.addEventListener('click', openProfileModal);
 }
 
-export function checkExistingSession() {
+export async function checkExistingSession() {
   const { initAuth: _a, getCurrentUser: _b } = { initAuth, getCurrentUser };
   const user = getCurrentUser();
   if (user) {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + user.token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          const updatedUser = { ...data.user, token: user.token };
+          sessionStorage.setItem('srf_session_v2', JSON.stringify(updatedUser));
+          sessionStorage.setItem('srf_current_user', JSON.stringify(updatedUser));
+          Object.assign(user, updatedUser);
+        }
+      }
+    } catch (e) { }
+
     // Resume existing session
     setTimeout(() => initPortal(), 0);
   }

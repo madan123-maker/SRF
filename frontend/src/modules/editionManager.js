@@ -229,12 +229,12 @@ function _renderWorkspaceTab(editionId) {
   setTimeout(() => {
     switch (_activeWorkspaceTab) {
       case 'applications': renderApplicationsTab(content, editionId); break;
-      case 'reformareas':  renderReformAreasTab(content, editionId); break;
-      case 'schema':       renderSchemaBuilderTab(content, editionId); break;
-      case 'queue':        renderQuestionQueueTab(content, editionId); break;
-      case 'scores':       renderScoresTab(content, editionId); break;
-      case 'reports':      renderReportsTab(content, editionId); break;
-      case 'mappings':     renderMappingsTab(content, editionId); break;
+      case 'reformareas': renderReformAreasTab(content, editionId); break;
+      case 'schema': renderSchemaBuilderTab(content, editionId); break;
+      case 'queue': renderQuestionQueueTab(content, editionId); break;
+      case 'scores': renderScoresTab(content, editionId); break;
+      case 'reports': renderReportsTab(content, editionId); break;
+      case 'mappings': renderMappingsTab(content, editionId); break;
     }
   }, 50);
 }
@@ -254,21 +254,21 @@ export function renderApplicationsTab(container, editionId) {
       const answers = Store.getAnswersByApplication(app.id);
       const submittedQs = answers.filter(a => a.questionStatus === 'Submitted').length;
       const ra = (Store.getReformAreas(editionId) || []).find(r => app.reformAreaStatuses?.[r.id] === 'Submitted')?.name || '—';
-      const catName = (edition?.categories||[]).find(c => c.id === app.category)?.shortName || app.category || '—';
+      const catName = (edition?.categories || []).find(c => c.id === app.category)?.shortName || app.category || '—';
       const date = app.submittedAt ? new Date(app.submittedAt).toLocaleDateString('en-IN') : new Date(app.updatedAt).toLocaleDateString('en-IN');
       return `
         <tr class="table-row-clickable" data-app-id="${app.id}">
-          <td><span class="app-id-chip">${app.id.substring(0,16)}…</span></td>
+          <td><span class="app-id-chip">${app.id.substring(0, 16)}…</span></td>
           <td>
             <div class="cell-user">
-              <div class="cell-avatar">${(user?.name||'?')[0]}</div>
-              <div><strong>${user?.name||'Unknown'}</strong><br><small>${user?.organization||''}</small></div>
+              <div class="cell-avatar">${(user?.name || '?')[0]}</div>
+              <div><strong>${user?.name || 'Unknown'}</strong><br><small>${user?.organization || ''}</small></div>
             </div>
           </td>
           <td><span class="cell-muted">${ra}</span></td>
           <td>${catName}</td>
           <td><span class="score-chip">${score}</span></td>
-          <td><span class="status-badge status-${app.status.toLowerCase().replace(/\s+/g,'-')}">${app.status}</span></td>
+          <td><span class="status-badge status-${app.status.toLowerCase().replace(/\s+/g, '-')}">${app.status}</span></td>
           <td><small>${date}</small></td>
           <td>
             <div class="row-actions">
@@ -299,7 +299,7 @@ export function renderApplicationsTab(container, editionId) {
             </select>
             <select id="app-filter-cat" class="form-select-sm">
               <option value="">All Categories</option>
-              ${(edition?.categories||[]).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              ${(edition?.categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -341,7 +341,8 @@ export function renderApplicationsTab(container, editionId) {
       row.addEventListener('click', () => renderApplicationDetailView(container, row.dataset.appId, editionId));
     });
     container.querySelectorAll('.btn-approve-app').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation();
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
         const app = Store.getApplicationById(btn.dataset.id);
         showPrompt({
           title: 'Approve Application',
@@ -358,9 +359,11 @@ export function renderApplicationsTab(container, editionId) {
       });
     });
     container.querySelectorAll('.btn-reject-app').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation();
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
         const app = Store.getApplicationById(btn.dataset.id);
-        showPrompt({ title: 'Reject Application', message: 'Enter rejection reason:', placeholder: 'e.g. Incomplete documentation…', confirmText: 'Reject',
+        showPrompt({
+          title: 'Reject Application', message: 'Enter rejection reason:', placeholder: 'e.g. Incomplete documentation…', confirmText: 'Reject',
           onConfirm: reason => {
             Store.rejectApplication(app.id, getCurrentUser().id, reason || 'No reason provided');
             Store.addNotification(btn.dataset.uid, NOTIFICATION_EVENTS.APPLICATION_REJECTED, `Your application ${app.id} was rejected. Reason: ${reason}`, app.id);
@@ -371,8 +374,10 @@ export function renderApplicationsTab(container, editionId) {
       });
     });
     container.querySelectorAll('.btn-delete-app').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation();
-        showConfirm({ title: 'Delete Application', message: 'Permanently delete this application?', type: 'danger', confirmText: 'Delete',
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        showConfirm({
+          title: 'Delete Application', message: 'Permanently delete this application?', type: 'danger', confirmText: 'Delete',
           onConfirm: () => { Store.deleteApplication(btn.dataset.id); showToast('Deleted.', 'success'); render(); }
         });
       });
@@ -406,10 +411,10 @@ function _renderAnswerPreview(field, value) {
   }
 
   if (!value) return '<em style="color:var(--text-muted)">Not answered</em>';
-  
+
   const elementsList = field.elements || [];
   const hasCustomElements = elementsList.length > 0 && !(elementsList.length === 1 && (elementsList[0].id.startsWith('el_srf6_') || elementsList[0].id.startsWith('main_el_')));
-  
+
   if (hasCustomElements) {
     let valuesMap = {};
     try {
@@ -417,7 +422,7 @@ function _renderAnswerPreview(field, value) {
     } catch (e) {
       return `<div>${value}</div>`;
     }
-    
+
     const rows = elementsList.map(el => {
       const elVal = valuesMap[el.id] !== undefined ? valuesMap[el.id] : '';
       switch (el.type) {
@@ -490,10 +495,10 @@ function _renderAnswerPreview(field, value) {
           `;
       }
     }).join('');
-    
+
     return `<div class="sub-elements-preview" style="display:flex; flex-direction:column; gap:6px;">${rows}</div>`;
   }
-  
+
   if (['heading', 'subheading', 'description', 'instruction', 'divider', 'hyperlink'].includes(field.fieldType)) {
     switch (field.fieldType) {
       case 'heading': return `<h3>${field.text || field.label}</h3>`;
@@ -560,18 +565,18 @@ function renderApplicationDetailView(container, appId, editionId) {
           <div class="doc-info-cell">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span>${file.name}</span>
-            <span class="doc-status-tag doc-${file.fileStatus?.toLowerCase()||'pending'}">${file.fileStatus||'Pending'}</span>
+            <span class="doc-status-tag doc-${file.fileStatus?.toLowerCase() || 'pending'}">${file.fileStatus || 'Pending'}</span>
           </div>
           <div class="doc-actions">
             <button class="btn btn-xs btn-outline btn-view-doc-file" 
-              data-app="${appId}" data-field="${field.id}" data-doc="${file.docId||file.name}">View</button>
+              data-app="${appId}" data-field="${field.id}" data-doc="${file.docId || file.name}">View</button>
             <button class="btn btn-xs btn-outline btn-download-doc-file" 
-              data-app="${appId}" data-field="${field.id}" data-doc="${file.docId||file.name}">Download</button>
+              data-app="${appId}" data-field="${field.id}" data-doc="${file.docId || file.name}">Download</button>
             ${file.fileStatus !== 'Approved' && file.fileStatus !== 'Rejected' ? `
               <button class="btn btn-xs btn-success-solid btn-approve-doc" 
-                data-app="${appId}" data-field="${field.id}" data-doc="${file.docId||file.name}" data-uid="${app.userId}">✓ Approve</button>
+                data-app="${appId}" data-field="${field.id}" data-doc="${file.docId || file.name}" data-uid="${app.userId}">✓ Approve</button>
               <button class="btn btn-xs btn-danger btn-reject-doc"
-                data-app="${appId}" data-field="${field.id}" data-doc="${file.docId||file.name}" data-uid="${app.userId}">✕ Reject</button>
+                data-app="${appId}" data-field="${field.id}" data-doc="${file.docId || file.name}" data-uid="${app.userId}">✕ Reject</button>
             ` : ''}
           </div>
         </div>
@@ -583,12 +588,12 @@ function renderApplicationDetailView(container, appId, editionId) {
           <div class="qr-header">
             <span class="qr-label">${field.label || field.text}</span>
             <span class="qr-status status-${qStatus.toLowerCase()}">${qStatus}</span>
-            <span class="qr-score">Score: ${qScore} / ${field.maxScore||field.weight||1}</span>
+            <span class="qr-score">Score: ${qScore} / ${field.maxScore || field.weight || 1}</span>
           </div>
           <div class="qr-answer">${_renderAnswerPreview(field, ans?.value)}</div>
           ${docsHtml ? `<div class="qr-docs">${docsHtml}</div>` : ''}
           ${ans?.adminRemarks ? `<div class="qr-remarks"><strong>Admin Note:</strong> ${ans.adminRemarks}</div>` : ''}
-          ${['Submitted','Resubmitted'].includes(ans?.questionStatus) ? `
+          ${['Submitted', 'Resubmitted'].includes(ans?.questionStatus) ? `
             <div class="qr-admin-actions">
               <button class="btn btn-sm btn-success-solid btn-approve-q" data-app="${appId}" data-field="${field.id}" data-uid="${app.userId}">✓ Approve Question</button>
               <button class="btn btn-sm btn-danger btn-reject-q" data-app="${appId}" data-field="${field.id}" data-uid="${app.userId}">✕ Reject Question</button>
@@ -599,16 +604,16 @@ function renderApplicationDetailView(container, appId, editionId) {
     }).join('');
     return `
       <div class="ra-review-section">
-        <div class="ra-review-header" style="border-left: 4px solid ${ra.color||'#4f46e5'};">
+        <div class="ra-review-header" style="border-left: 4px solid ${ra.color || '#4f46e5'};">
           <h3>${ra.name}</h3>
-          <span>${fields.filter(f=>!f.isLayoutElement).length} questions</span>
+          <span>${fields.filter(f => !f.isLayoutElement).length} questions</span>
         </div>
         ${questionRows || '<p style="color:var(--text-muted);padding:12px;">No questions in this reform area.</p>'}
       </div>
     `;
   }).join('');
 
-  const timeline = (app.timeline||[]).slice().reverse().slice(0,10).map(t => `
+  const timeline = (app.timeline || []).slice().reverse().slice(0, 10).map(t => `
     <div class="timeline-entry">
       <div class="tl-dot"></div>
       <div class="tl-body">
@@ -630,10 +635,10 @@ function renderApplicationDetailView(container, appId, editionId) {
       <div>
         <div class="page-eyebrow">Application Review</div>
         <h1>${app.id}</h1>
-        <p style="color:var(--text-muted)">${edition?.name} · ${(edition?.categories||[]).find(c=>c.id===app.category)?.name||app.category}</p>
+        <p style="color:var(--text-muted)">${edition?.name} · ${(edition?.categories || []).find(c => c.id === app.category)?.name || app.category}</p>
       </div>
       <div class="app-detail-actions">
-        <span class="status-badge-lg status-${app.status.toLowerCase().replace(/\s+/g,'-')}">${app.status}</span>
+        <span class="status-badge-lg status-${app.status.toLowerCase().replace(/\s+/g, '-')}">${app.status}</span>
         ${app.status !== 'Approved' ? `<button class="btn btn-success-solid" id="btn-detail-approve">✓ Approve</button>` : ''}
         ${app.status !== 'Rejected' ? `<button class="btn btn-danger" id="btn-detail-reject">✕ Reject</button>` : ''}
       </div>
@@ -645,9 +650,9 @@ function renderApplicationDetailView(container, appId, editionId) {
       <div class="detail-main">
         <div class="kpi-row" style="margin-bottom:24px;">
           <div class="kpi-card"><div class="kpi-value" style="color:#4f46e5">${score}</div><div class="kpi-label">Total Score</div></div>
-          <div class="kpi-card"><div class="kpi-value" style="color:#10b981">${answers.filter(a=>a.questionStatus===QUESTION_STATUS.APPROVED).length}</div><div class="kpi-label">Approved Qs</div></div>
-          <div class="kpi-card"><div class="kpi-value" style="color:#d97706">${answers.filter(a=>a.questionStatus===QUESTION_STATUS.SUBMITTED).length}</div><div class="kpi-label">Pending Review</div></div>
-          <div class="kpi-card"><div class="kpi-value" style="color:#ef4444">${answers.filter(a=>a.questionStatus===QUESTION_STATUS.REJECTED).length}</div><div class="kpi-label">Rejected Qs</div></div>
+          <div class="kpi-card"><div class="kpi-value" style="color:#10b981">${answers.filter(a => a.questionStatus === QUESTION_STATUS.APPROVED).length}</div><div class="kpi-label">Approved Qs</div></div>
+          <div class="kpi-card"><div class="kpi-value" style="color:#d97706">${answers.filter(a => a.questionStatus === QUESTION_STATUS.SUBMITTED).length}</div><div class="kpi-label">Pending Review</div></div>
+          <div class="kpi-card"><div class="kpi-value" style="color:#ef4444">${answers.filter(a => a.questionStatus === QUESTION_STATUS.REJECTED).length}</div><div class="kpi-label">Rejected Qs</div></div>
         </div>
 
         <div class="card-section">
@@ -661,17 +666,17 @@ function renderApplicationDetailView(container, appId, editionId) {
           <div class="card-section-header"><h2>Applicant</h2></div>
           <div class="card-section-body">
             <table class="profile-table">
-              <tr><td>Name</td><td><strong>${user?.name||'—'}</strong></td></tr>
-              <tr><td>Organization</td><td>${user?.organization||'—'}</td></tr>
-              <tr><td>Email</td><td><code style="font-size:11px">${user?.email||'—'}</code></td></tr>
-              <tr><td>State</td><td>${user?.state||'—'}</td></tr>
-              <tr><td>Sector</td><td>${user?.sector||'—'}</td></tr>
+              <tr><td>Name</td><td><strong>${user?.name || '—'}</strong></td></tr>
+              <tr><td>Organization</td><td>${user?.organization || '—'}</td></tr>
+              <tr><td>Email</td><td><code style="font-size:11px">${user?.email || '—'}</code></td></tr>
+              <tr><td>State</td><td>${user?.state || '—'}</td></tr>
+              <tr><td>Sector</td><td>${user?.sector || '—'}</td></tr>
             </table>
           </div>
         </div>
         <div class="card-section">
           <div class="card-section-header"><h2>Timeline</h2></div>
-          <div class="card-section-body"><div class="timeline-list">${timeline||'<p style="color:var(--text-muted)">No history yet.</p>'}</div></div>
+          <div class="card-section-body"><div class="timeline-list">${timeline || '<p style="color:var(--text-muted)">No history yet.</p>'}</div></div>
         </div>
       </div>
     </div>
@@ -692,16 +697,19 @@ function renderApplicationDetailView(container, appId, editionId) {
         const comments = remarks || 'Approved by admin';
         Store.approveApplication(app.id, getCurrentUser().id, comments);
         Store.addNotification(app.userId, NOTIFICATION_EVENTS.APPLICATION_APPROVED, `Your application ${app.id} has been approved!`, app.id);
-        showAlert({ title: '✓ Application Approved!', message: `Application ${app.id} is now approved.`, type: 'success',
-          onClose: () => renderApplicationDetailView(container, appId, editionId) });
+        showAlert({
+          title: '✓ Application Approved!', message: `Application ${app.id} is now approved.`, type: 'success',
+          onClose: () => renderApplicationDetailView(container, appId, editionId)
+        });
       }
     });
   });
 
   container.querySelector('#btn-detail-reject')?.addEventListener('click', () => {
-    showPrompt({ title: 'Reject Application', message: 'Enter rejection reason:', placeholder: 'e.g. Incomplete documentation…', confirmText: 'Reject',
+    showPrompt({
+      title: 'Reject Application', message: 'Enter rejection reason:', placeholder: 'e.g. Incomplete documentation…', confirmText: 'Reject',
       onConfirm: reason => {
-        Store.rejectApplication(app.id, getCurrentUser().id, reason||'No reason');
+        Store.rejectApplication(app.id, getCurrentUser().id, reason || 'No reason');
         Store.addNotification(app.userId, NOTIFICATION_EVENTS.APPLICATION_REJECTED, `Your application ${app.id} was rejected. Reason: ${reason}`, app.id);
         Store.addAuditLog(getCurrentUser().id, `Rejected: ${reason}`, 'application', app.id);
         showToast('Application rejected.', 'info');
@@ -713,9 +721,10 @@ function renderApplicationDetailView(container, appId, editionId) {
   container.querySelectorAll('.btn-approve-q').forEach(btn => {
     btn.addEventListener('click', () => {
       const field = Store.getFieldById(btn.dataset.field);
-      showPrompt({ title: 'Approve Question', message: `Enter score for this question (max: ${field?.maxScore||1}):`, placeholder: `0 – ${field?.maxScore||1}`, confirmText: 'Approve',
+      showPrompt({
+        title: 'Approve Question', message: `Enter score for this question (max: ${field?.maxScore || 1}):`, placeholder: `0 – ${field?.maxScore || 1}`, confirmText: 'Approve',
         onConfirm: scoreStr => {
-          const sc = parseFloat(scoreStr) || (field?.maxScore||field?.weight||1);
+          const sc = parseFloat(scoreStr) || (field?.maxScore || field?.weight || 1);
           Store.approveQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, sc);
           Store.addNotification(btn.dataset.uid, NOTIFICATION_EVENTS.QUESTION_APPROVED, `A question in your application was approved. Score: ${sc}`, btn.dataset.app);
           Store.addAuditLog(getCurrentUser().id, `Approved question: ${field?.label}`, 'question', btn.dataset.app);
@@ -729,9 +738,10 @@ function renderApplicationDetailView(container, appId, editionId) {
   container.querySelectorAll('.btn-reject-q').forEach(btn => {
     btn.addEventListener('click', () => {
       const field = Store.getFieldById(btn.dataset.field);
-      showPrompt({ title: 'Reject Question', message: 'Enter rejection reason:', placeholder: 'e.g. Answer is incomplete…', confirmText: 'Reject',
+      showPrompt({
+        title: 'Reject Question', message: 'Enter rejection reason:', placeholder: 'e.g. Answer is incomplete…', confirmText: 'Reject',
         onConfirm: reason => {
-          Store.rejectQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, reason||'No reason');
+          Store.rejectQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, reason || 'No reason');
           Store.addNotification(btn.dataset.uid, NOTIFICATION_EVENTS.QUESTION_REJECTED, `A question was rejected: ${reason}`, btn.dataset.app);
           Store.addAuditLog(getCurrentUser().id, `Rejected question: ${field?.label} — ${reason}`, 'question', btn.dataset.app);
           showToast('Question rejected.', 'info');
@@ -752,7 +762,8 @@ function renderApplicationDetailView(container, appId, editionId) {
 
   container.querySelectorAll('.btn-reject-doc').forEach(btn => {
     btn.addEventListener('click', () => {
-      showPrompt({ title: 'Reject Document', message: 'Enter rejection reason:', placeholder: 'e.g. Document is blurred, wrong document…', confirmText: 'Reject Document',
+      showPrompt({
+        title: 'Reject Document', message: 'Enter rejection reason:', placeholder: 'e.g. Document is blurred, wrong document…', confirmText: 'Reject Document',
         onConfirm: reason => {
           const r = reason || 'Invalid document';
           Store.rejectDocument(btn.dataset.app, btn.dataset.field, btn.dataset.doc, getCurrentUser().id, r);
@@ -771,7 +782,7 @@ function renderApplicationDetailView(container, appId, editionId) {
       const dId = btn.dataset.doc;
       const ans = Store.getAnswerByField(aId, fId);
       let file = ans?.files?.find(f => (f.docId || f.name) === dId);
-      
+
       if (file && !file.dataUrl && !file.fileUrl) {
         try {
           btn.textContent = '⏳ Loading...';
@@ -897,7 +908,8 @@ function renderReformAreasTab(container, editionId) {
 
   container.querySelectorAll('.btn-delete-ra').forEach(btn => {
     btn.addEventListener('click', () => {
-      showConfirm({ title: 'Delete Reform Area', message: `Delete <strong>${btn.dataset.name}</strong> and all its questions?`, type: 'danger', confirmText: 'Delete',
+      showConfirm({
+        title: 'Delete Reform Area', message: `Delete <strong>${btn.dataset.name}</strong> and all its questions?`, type: 'danger', confirmText: 'Delete',
         onConfirm: () => {
           Store.deleteReformArea(btn.dataset.id);
           Store.addAuditLog(getCurrentUser().id, `Deleted reform area: ${btn.dataset.name}`, 'reformArea', btn.dataset.id);
@@ -911,7 +923,7 @@ function renderReformAreasTab(container, editionId) {
 
 function _openReformAreaModal(editionId, editId, parentContainer) {
   const existing = editId ? Store.getReformAreaById(editId) : null;
-  const colors = ['#4f46e5','#0284c7','#7e22ce','#10b981','#d97706','#ef4444','#0891b2','#db2777'];
+  const colors = ['#4f46e5', '#0284c7', '#7e22ce', '#10b981', '#d97706', '#ef4444', '#0891b2', '#db2777'];
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.innerHTML = `
@@ -919,21 +931,21 @@ function _openReformAreaModal(editionId, editId, parentContainer) {
       <h3 class="modal-title-custom" style="text-align:left;margin-bottom:20px;">${existing ? 'Edit' : 'Add'} Reform Area</h3>
       <div class="form-group" style="margin-bottom:12px;">
         <label>Reform Area Name *</label>
-        <input type="text" id="ra-name" class="form-input" value="${existing?.name||''}" placeholder="e.g. Reform Area A">
+        <input type="text" id="ra-name" class="form-input" value="${existing?.name || ''}" placeholder="e.g. Reform Area A">
       </div>
       <div class="form-group" style="margin-bottom:12px;">
         <label>Description</label>
-        <textarea id="ra-desc" class="form-input" rows="2" style="resize:vertical">${existing?.description||''}</textarea>
+        <textarea id="ra-desc" class="form-input" rows="2" style="resize:vertical">${existing?.description || ''}</textarea>
       </div>
       <div class="form-group-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
         <div class="form-group">
           <label>Marks</label>
-          <input type="number" id="ra-marks" class="form-input" value="${existing?.marks||10}" min="1">
+          <input type="number" id="ra-marks" class="form-input" value="${existing?.marks || 10}" min="1">
         </div>
         <div class="form-group">
           <label>Color</label>
           <select id="ra-color" class="form-input form-select">
-            ${colors.map(c => `<option value="${c}" ${existing?.color===c?'selected':''}>${c}</option>`).join('')}
+            ${colors.map(c => `<option value="${c}" ${existing?.color === c ? 'selected' : ''}>${c}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -948,7 +960,7 @@ function _openReformAreaModal(editionId, editId, parentContainer) {
   backdrop.querySelector('#submit-ra').addEventListener('click', () => {
     const name = backdrop.querySelector('#ra-name').value.trim();
     if (!name) { showToast('Name is required.', 'error'); return; }
-    const data = { name, description: backdrop.querySelector('#ra-desc').value.trim(), marks: parseInt(backdrop.querySelector('#ra-marks').value)||10, color: backdrop.querySelector('#ra-color').value };
+    const data = { name, description: backdrop.querySelector('#ra-desc').value.trim(), marks: parseInt(backdrop.querySelector('#ra-marks').value) || 10, color: backdrop.querySelector('#ra-color').value };
     if (existing) {
       Store.updateReformArea(editId, data);
       Store.addAuditLog(getCurrentUser().id, `Updated reform area: ${name}`, 'reformArea', editId);
@@ -956,8 +968,8 @@ function _openReformAreaModal(editionId, editId, parentContainer) {
       const ra = Store.createReformArea(editionId, data);
       Store.addAuditLog(getCurrentUser().id, `Created reform area: ${name}`, 'reformArea', ra.id);
     }
-    Store.saveSchemaVersion(editionId, getCurrentUser().id, `${existing?'Updated':'Added'} reform area: ${name}`);
-    showToast(`Reform Area ${existing?'updated':'created'}!`, 'success');
+    Store.saveSchemaVersion(editionId, getCurrentUser().id, `${existing ? 'Updated' : 'Added'} reform area: ${name}`);
+    showToast(`Reform Area ${existing ? 'updated' : 'created'}!`, 'success');
     backdrop.remove();
     renderReformAreasTab(parentContainer, editionId);
   });
@@ -973,7 +985,7 @@ function renderSchemaBuilderTab(container, editionId) {
   }
 
   const leftNav = reformAreas.map(ra => `
-    <div class="schema-nav-item ${ra.id === _activeReformAreaId ? 'active' : ''}" draggable="true" data-raid="${ra.id}" style="${ra.id===_activeReformAreaId?`border-left:3px solid ${ra.color};background:${ra.color}12`:''}" title="${ra.name}">
+    <div class="schema-nav-item ${ra.id === _activeReformAreaId ? 'active' : ''}" draggable="true" data-raid="${ra.id}" style="${ra.id === _activeReformAreaId ? `border-left:3px solid ${ra.color};background:${ra.color}12` : ''}" title="${ra.name}">
       <div class="schema-nav-dot" style="background:${ra.color}"></div>
       <span>${ra.name}</span>
       <span class="schema-nav-count">${Store.getFieldsByReformArea(ra.id).length}</span>
@@ -1105,7 +1117,7 @@ function renderSchemaBuilderTab(container, editionId) {
         fieldType,
         label: el?.label || fieldType,
         text: el?.label || fieldType,
-        required: !['heading','subheading','description','instruction','divider','card','banner','notes','warning','image','hyperlink'].includes(fieldType),
+        required: !['heading', 'subheading', 'description', 'instruction', 'divider', 'card', 'banner', 'notes', 'warning', 'image', 'hyperlink'].includes(fieldType),
         mandatory: false,
         weight: 1, maxScore: 1
       });
@@ -1133,7 +1145,7 @@ function renderSchemaBuilderTab(container, editionId) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `schema_${Store.getEditionById(editionId)?.name.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `schema_${Store.getEditionById(editionId)?.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     showToast('Schema exported!', 'success');
   });
@@ -1149,37 +1161,37 @@ function _renderFormCanvas(editionId, reformAreaId) {
   const fieldsHtml = fields.map((field, idx) => `
     <div class="canvas-field-card" draggable="true" data-fid="${field.id}">
       <div class="cfc-drag-handle" title="Drag to reorder">⠿</div>
-      <div class="cfc-type-badge" style="background:${TOOLBOX_ELEMENTS.find(e=>e.id===field.fieldType)?.color||'#64748b'}22;color:${TOOLBOX_ELEMENTS.find(e=>e.id===field.fieldType)?.color||'#64748b'}">${TOOLBOX_ELEMENTS.find(e=>e.id===field.fieldType)?.icon||'?'} ${field.fieldType}</div>
+      <div class="cfc-type-badge" style="background:${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.color || '#64748b'}22;color:${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.color || '#64748b'}">${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.icon || '?'} ${field.fieldType}</div>
       <div class="cfc-body">
-        <input class="cfc-label-input" type="text" value="${field.label||field.text}" placeholder="Label…" data-fid="${field.id}" data-prop="label">
+        <input class="cfc-label-input" type="text" value="${field.label || field.text}" placeholder="Label…" data-fid="${field.id}" data-prop="label">
         ${_renderFieldPreview(field)}
         ${field.isUploadElement ? `
           <div class="cfc-upload-config" style="margin-top:8px;">
             <label style="font-size:12px;color:var(--text-muted);">Upload requirement:</label>
             <select class="form-select-sm cfc-upload-req" data-fid="${field.id}" style="margin-top:4px;">
-              <option value="mandatory" ${field.uploadRequirement==='mandatory'?'selected':''}>Mandatory</option>
-              <option value="optional" ${field.uploadRequirement==='optional'?'selected':''}>Optional</option>
-              <option value="none" ${field.uploadRequirement==='none'?'selected':''}>Not Required</option>
+              <option value="mandatory" ${field.uploadRequirement === 'mandatory' ? 'selected' : ''}>Mandatory</option>
+              <option value="optional" ${field.uploadRequirement === 'optional' ? 'selected' : ''}>Optional</option>
+              <option value="none" ${field.uploadRequirement === 'none' ? 'selected' : ''}>Not Required</option>
             </select>
           </div>
         ` : ''}
         ${field.fieldType === 'hyperlink' ? `
-          <input class="cfc-url-input form-input" type="url" style="margin-top:6px;font-size:12px;" value="${field.url||''}" placeholder="https://..." data-fid="${field.id}" data-prop="url">
+          <input class="cfc-url-input form-input" type="url" style="margin-top:6px;font-size:12px;" value="${field.url || ''}" placeholder="https://..." data-fid="${field.id}" data-prop="url">
         ` : ''}
         ${field.fieldType === 'radio' || field.fieldType === 'dropdown' || field.fieldType === 'multiselect' || field.fieldType === 'checkbox' ? `
           <div style="margin-top:8px;">
             <label style="font-size:12px;color:var(--text-muted);">Options (one per line):</label>
-            <textarea class="cfc-options-input form-input" style="margin-top:4px;font-size:12px;" rows="3" data-fid="${field.id}" data-prop="options" placeholder="Option 1&#10;Option 2&#10;Option 3">${(field.options||[]).join('\n')}</textarea>
+            <textarea class="cfc-options-input form-input" style="margin-top:4px;font-size:12px;" rows="3" data-fid="${field.id}" data-prop="options" placeholder="Option 1&#10;Option 2&#10;Option 3">${(field.options || []).join('\n')}</textarea>
           </div>
         ` : ''}
         <div class="cfc-ap-row" style="margin-top:8px;display:flex;gap:8px;align-items:center;">
           <label style="font-size:11px;color:var(--text-muted);min-width:70px;">Action Point:</label>
-          <input class="cfc-ap-title-input form-input" type="text" style="font-size:12px;padding:4px 8px;height:auto;" value="${field.actionPointTitle||''}" placeholder="e.g. Action Point 1: Policy Metric" data-fid="${field.id}">
+          <input class="cfc-ap-title-input form-input" type="text" style="font-size:12px;padding:4px 8px;height:auto;" value="${field.actionPointTitle || ''}" placeholder="e.g. Action Point 1: Policy Metric" data-fid="${field.id}">
         </div>
         <div class="cfc-meta-row">
-          <label class="cfc-toggle-label"><input type="checkbox" class="cfc-required-chk" data-fid="${field.id}" ${field.required?'checked':''}> Required</label>
-          <label class="cfc-toggle-label" style="margin-left:12px"><input type="checkbox" class="cfc-mandatory-chk" data-fid="${field.id}" ${field.mandatory?'checked':''}> Mandatory Upload</label>
-          <input class="cfc-score-input" type="number" min="0" max="100" value="${field.maxScore||1}" placeholder="Score" data-fid="${field.id}" data-prop="maxScore" style="width:70px;margin-left:auto;" title="Max score for this question">
+          <label class="cfc-toggle-label"><input type="checkbox" class="cfc-required-chk" data-fid="${field.id}" ${field.required ? 'checked' : ''}> Required</label>
+          <label class="cfc-toggle-label" style="margin-left:12px"><input type="checkbox" class="cfc-mandatory-chk" data-fid="${field.id}" ${field.mandatory ? 'checked' : ''}> Mandatory Upload</label>
+          <input class="cfc-score-input" type="number" min="0" max="100" value="${field.maxScore || 1}" placeholder="Score" data-fid="${field.id}" data-prop="maxScore" style="width:70px;margin-left:auto;" title="Max score for this question">
         </div>
       </div>
       <div class="cfc-actions">
@@ -1194,7 +1206,7 @@ function _renderFormCanvas(editionId, reformAreaId) {
     <div class="canvas-header" style="border-left:4px solid ${ra.color};">
       <div>
         <h2>${ra.name}</h2>
-        <p style="font-size:13px;color:var(--text-muted)">${ra.description||'No description'}</p>
+        <p style="font-size:13px;color:var(--text-muted)">${ra.description || 'No description'}</p>
       </div>
       <span class="count-chip">${fields.length} elements</span>
     </div>
@@ -1211,30 +1223,30 @@ function _renderFormCanvas(editionId, reformAreaId) {
 
 function _renderFieldPreview(field) {
   switch (field.fieldType) {
-    case 'heading':     return `<h2 class="preview-heading">${field.label}</h2>`;
-    case 'subheading':  return `<h3 class="preview-subheading">${field.label}</h3>`;
+    case 'heading': return `<h2 class="preview-heading">${field.label}</h2>`;
+    case 'subheading': return `<h3 class="preview-subheading">${field.label}</h3>`;
     case 'description': return `<p class="preview-desc">${field.content || field.label}</p>`;
     case 'instruction': return `<div class="preview-instruction"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>${field.label}</div>`;
-    case 'divider':     return `<hr class="preview-divider">`;
-    case 'warning':     return `<div class="preview-warning">⚠ ${field.label}</div>`;
-    case 'notes':       return `<div class="preview-notes">📝 ${field.label}</div>`;
-    case 'banner':      return `<div class="preview-banner">${field.label}</div>`;
-    case 'hyperlink':   return `<a class="preview-hyperlink" href="${field.url||'#'}" target="_blank">🔗 ${field.label}</a>`;
-    case 'radio':       return `<div class="preview-radio"><label><input type="radio" disabled> Yes</label> <label><input type="radio" disabled> No</label></div>`;
-    case 'checkbox':    return `<label class="preview-checkbox"><input type="checkbox" disabled> ${field.label}</label>`;
-    case 'dropdown':    return `<select class="preview-input" disabled><option>Select option…</option></select>`;
-    case 'date':        return `<input type="date" class="preview-input" disabled>`;
-    case 'number':      return `<input type="number" class="preview-input" disabled placeholder="0">`;
-    case 'email':       return `<input type="email" class="preview-input" disabled placeholder="email@example.com">`;
-    case 'mobile':      return `<input type="tel" class="preview-input" disabled placeholder="+91 00000 00000">`;
-    case 'textarea':    return `<textarea class="preview-input" rows="2" disabled style="resize:none" placeholder="Enter text…"></textarea>`;
-    case 'url':         return `<input type="url" class="preview-input" disabled placeholder="https://…">`;
-    case 'file':        return `<div class="preview-upload">📎 File Upload</div>`;
-    case 'pdf':         return `<div class="preview-upload">📄 PDF Upload</div>`;
+    case 'divider': return `<hr class="preview-divider">`;
+    case 'warning': return `<div class="preview-warning">⚠ ${field.label}</div>`;
+    case 'notes': return `<div class="preview-notes">📝 ${field.label}</div>`;
+    case 'banner': return `<div class="preview-banner">${field.label}</div>`;
+    case 'hyperlink': return `<a class="preview-hyperlink" href="${field.url || '#'}" target="_blank">🔗 ${field.label}</a>`;
+    case 'radio': return `<div class="preview-radio"><label><input type="radio" disabled> Yes</label> <label><input type="radio" disabled> No</label></div>`;
+    case 'checkbox': return `<label class="preview-checkbox"><input type="checkbox" disabled> ${field.label}</label>`;
+    case 'dropdown': return `<select class="preview-input" disabled><option>Select option…</option></select>`;
+    case 'date': return `<input type="date" class="preview-input" disabled>`;
+    case 'number': return `<input type="number" class="preview-input" disabled placeholder="0">`;
+    case 'email': return `<input type="email" class="preview-input" disabled placeholder="email@example.com">`;
+    case 'mobile': return `<input type="tel" class="preview-input" disabled placeholder="+91 00000 00000">`;
+    case 'textarea': return `<textarea class="preview-input" rows="2" disabled style="resize:none" placeholder="Enter text…"></textarea>`;
+    case 'url': return `<input type="url" class="preview-input" disabled placeholder="https://…">`;
+    case 'file': return `<div class="preview-upload">📎 File Upload</div>`;
+    case 'pdf': return `<div class="preview-upload">📄 PDF Upload</div>`;
     case 'imageupload': return `<div class="preview-upload">📷 Image Upload</div>`;
-    case 'richtext':    return `<div class="preview-richtext">✏ Rich Text Editor</div>`;
-    case 'table':       return `<div class="preview-table">⊞ Table Input</div>`;
-    default:            return `<input type="text" class="preview-input" disabled placeholder="${field.label||'Enter text…'}">`;
+    case 'richtext': return `<div class="preview-richtext">✏ Rich Text Editor</div>`;
+    case 'table': return `<div class="preview-table">⊞ Table Input</div>`;
+    default: return `<input type="text" class="preview-input" disabled placeholder="${field.label || 'Enter text…'}">`;
   }
 }
 
@@ -1276,7 +1288,7 @@ function _attachCanvasListeners(container, editionId) {
   });
   // Score
   container.querySelectorAll('.cfc-score-input').forEach(input => {
-    input.addEventListener('change', () => Store.updateField(input.dataset.fid, { maxScore: parseFloat(input.value)||1, weight: parseFloat(input.value)||1 }));
+    input.addEventListener('change', () => Store.updateField(input.dataset.fid, { maxScore: parseFloat(input.value) || 1, weight: parseFloat(input.value) || 1 }));
   });
   // Upload requirement
   container.querySelectorAll('.cfc-upload-req').forEach(sel => {
@@ -1285,7 +1297,8 @@ function _attachCanvasListeners(container, editionId) {
   // Delete field
   container.querySelectorAll('.btn-delete-field').forEach(btn => {
     btn.addEventListener('click', () => {
-      showConfirm({ title: 'Delete Field', message: 'Delete this form element?', type: 'danger', confirmText: 'Delete',
+      showConfirm({
+        title: 'Delete Field', message: 'Delete this form element?', type: 'danger', confirmText: 'Delete',
         onConfirm: () => {
           Store.deleteField(btn.dataset.id);
           Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Deleted field');
@@ -1325,7 +1338,7 @@ function _attachCanvasListeners(container, editionId) {
         orderedIds.splice(targetIdx, 0, draggedFieldId);
         Store.reorderFields(_activeReformAreaId, orderedIds);
         Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Reordered questions');
-        
+
         // Re-render canvas
         const canvas = container.querySelector('#schema-canvas');
         if (canvas && _activeReformAreaId) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId);
@@ -1344,7 +1357,7 @@ function _openVersionHistoryModal(editionId, container) {
     <div class="modal-card-custom animate-modal-in" style="max-width:560px;text-align:left;max-height:80vh;overflow-y:auto;">
       <h3 class="modal-title-custom" style="text-align:left;margin-bottom:16px;">Schema Version History</h3>
       ${versions.length === 0 ? '<p style="color:var(--text-muted)">No versions saved yet. Click "Save Version" in the Schema Builder.</p>' :
-        versions.map(v => `
+      versions.map(v => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;">
             <div>
               <strong>${v.versionLabel}</strong>
@@ -1362,7 +1375,8 @@ function _openVersionHistoryModal(editionId, container) {
   backdrop.querySelector('#close-versions').addEventListener('click', () => backdrop.remove());
   backdrop.querySelectorAll('.btn-restore-version').forEach(btn => {
     btn.addEventListener('click', () => {
-      showConfirm({ title: 'Restore Schema Version', message: 'Restore this version? Current schema will be overwritten.', type: 'warning', confirmText: 'Restore',
+      showConfirm({
+        title: 'Restore Schema Version', message: 'Restore this version? Current schema will be overwritten.', type: 'warning', confirmText: 'Restore',
         onConfirm: () => {
           Store.restoreSchemaVersion(btn.dataset.id, getCurrentUser().id);
           backdrop.remove();
@@ -1386,15 +1400,15 @@ function renderQuestionQueueTab(container, editionId) {
     const result = Store.getQuestionReviewQueue(editionId, { status: activeStatus, reformAreaId: activeRA });
     const rows = result.items.map(row => `
       <tr>
-        <td><span class="app-id-chip">${row.appId.substring(0,14)}…</span></td>
+        <td><span class="app-id-chip">${row.appId.substring(0, 14)}…</span></td>
         <td><strong>${row.userName}</strong></td>
         <td>${row.reformAreaName}</td>
-        <td style="max-width:220px;"><span title="${row.questionLabel}">${row.questionLabel?.substring(0,50)}${row.questionLabel?.length>50?'…':''}</span></td>
+        <td style="max-width:220px;"><span title="${row.questionLabel}">${row.questionLabel?.substring(0, 50)}${row.questionLabel?.length > 50 ? '…' : ''}</span></td>
         <td><span class="status-badge status-${row.questionStatus.toLowerCase()}">${row.questionStatus}</span></td>
         <td><strong style="color:#4f46e5">${row.questionScore}</strong> / ${row.maxScore}</td>
         <td>
           <div class="row-actions">
-            ${['Submitted','Resubmitted'].includes(row.questionStatus) ? `
+            ${['Submitted', 'Resubmitted'].includes(row.questionStatus) ? `
               <button class="btn btn-xs btn-success-solid btn-q-approve" data-app="${row.appId}" data-field="${row.fieldId}" data-uid="${row.userId}" data-max="${row.maxScore}" title="Approve">✓</button>
               <button class="btn btn-xs btn-danger btn-q-reject" data-app="${row.appId}" data-field="${row.fieldId}" data-uid="${row.userId}" title="Reject">✕</button>
             ` : row.questionStatus === QUESTION_STATUS.APPROVED ? '<span style="color:#10b981;font-size:12px;">✓ Approved</span>' : '<span style="color:#ef4444;font-size:12px;">✕ Rejected</span>'}
@@ -1409,14 +1423,14 @@ function renderQuestionQueueTab(container, editionId) {
           <h2>Question Review Queue <span class="count-chip">${result.total}</span></h2>
           <div class="filter-row">
             <select id="q-filter-status" class="form-select-sm">
-              <option value="Submitted" ${activeStatus==='Submitted'?'selected':''}>Pending Review</option>
-              <option value="Approved" ${activeStatus==='Approved'?'selected':''}>Approved</option>
-              <option value="Rejected" ${activeStatus==='Rejected'?'selected':''}>Rejected</option>
-              <option value="" ${!activeStatus?'selected':''}>All</option>
+              <option value="Submitted" ${activeStatus === 'Submitted' ? 'selected' : ''}>Pending Review</option>
+              <option value="Approved" ${activeStatus === 'Approved' ? 'selected' : ''}>Approved</option>
+              <option value="Rejected" ${activeStatus === 'Rejected' ? 'selected' : ''}>Rejected</option>
+              <option value="" ${!activeStatus ? 'selected' : ''}>All</option>
             </select>
             <select id="q-filter-ra" class="form-select-sm">
               <option value="">All Reform Areas</option>
-              ${reformAreas.map(r => `<option value="${r.id}" ${activeRA===r.id?'selected':''}>${r.name}</option>`).join('')}
+              ${reformAreas.map(r => `<option value="${r.id}" ${activeRA === r.id ? 'selected' : ''}>${r.name}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -1443,9 +1457,10 @@ function renderQuestionQueueTab(container, editionId) {
     container.querySelectorAll('.btn-q-approve').forEach(btn => {
       btn.addEventListener('click', () => {
         const field = Store.getFieldById(btn.dataset.field);
-        showPrompt({ title: 'Approve Question', message: `Enter score (max ${btn.dataset.max}):`, placeholder: btn.dataset.max, confirmText: 'Approve',
+        showPrompt({
+          title: 'Approve Question', message: `Enter score (max ${btn.dataset.max}):`, placeholder: btn.dataset.max, confirmText: 'Approve',
           onConfirm: scoreStr => {
-            const sc = parseFloat(scoreStr)||parseFloat(btn.dataset.max)||1;
+            const sc = parseFloat(scoreStr) || parseFloat(btn.dataset.max) || 1;
             Store.approveQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, sc);
             Store.addNotification(btn.dataset.uid, NOTIFICATION_EVENTS.QUESTION_APPROVED, `A question was approved. Score: ${sc}`, btn.dataset.app);
             Store.addAuditLog(getCurrentUser().id, `Approved question: ${field?.label}`, 'question', btn.dataset.app);
@@ -1457,9 +1472,10 @@ function renderQuestionQueueTab(container, editionId) {
     container.querySelectorAll('.btn-q-reject').forEach(btn => {
       btn.addEventListener('click', () => {
         const field = Store.getFieldById(btn.dataset.field);
-        showPrompt({ title: 'Reject Question', message: 'Enter rejection reason:', placeholder: 'e.g. Answer is incomplete…', confirmText: 'Reject',
+        showPrompt({
+          title: 'Reject Question', message: 'Enter rejection reason:', placeholder: 'e.g. Answer is incomplete…', confirmText: 'Reject',
           onConfirm: reason => {
-            Store.rejectQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, reason||'No reason');
+            Store.rejectQuestion(btn.dataset.app, btn.dataset.field, getCurrentUser().id, reason || 'No reason');
             Store.addNotification(btn.dataset.uid, NOTIFICATION_EVENTS.QUESTION_REJECTED, `A question was rejected: ${reason}`, btn.dataset.app);
             Store.addAuditLog(getCurrentUser().id, `Rejected question: ${field?.label}`, 'question', btn.dataset.app);
             showToast('Question rejected.', 'info'); render();
@@ -1485,7 +1501,7 @@ function renderScoresTab(container, editionId) {
       <div class="kpi-row" style="margin-bottom:28px;">
         <div class="kpi-card big"><div class="kpi-value" style="color:#4f46e5;font-size:36px">${stats.avgScore}</div><div class="kpi-label">Average Score</div></div>
         <div class="kpi-card big"><div class="kpi-value" style="color:#10b981;font-size:36px">${stats.topScore}</div><div class="kpi-label">Highest Score</div></div>
-        <div class="kpi-card big"><div class="kpi-value" style="color:#d97706;font-size:36px">${stats.lowestScore||0}</div><div class="kpi-label">Lowest Score</div></div>
+        <div class="kpi-card big"><div class="kpi-value" style="color:#d97706;font-size:36px">${stats.lowestScore || 0}</div><div class="kpi-label">Lowest Score</div></div>
         <div class="kpi-card big"><div class="kpi-value" style="font-size:36px">${stats.total}</div><div class="kpi-label">Applications</div></div>
       </div>
 
@@ -1513,7 +1529,7 @@ function renderScoresTab(container, editionId) {
                   <td>${ra.totalScore}</td>
                   <td>
                     <div class="mini-progress">
-                      <div class="mini-progress-fill" style="width:${Math.min(ra.avgScore,100)}%;background:${ra.color}"></div>
+                      <div class="mini-progress-fill" style="width:${Math.min(ra.avgScore, 100)}%;background:${ra.color}"></div>
                     </div>
                   </td>
                 </tr>
@@ -1547,7 +1563,7 @@ function renderScoresTab(container, editionId) {
           type: 'doughnut',
           data: {
             labels: ['Approved', 'Rejected', 'Submitted', 'Under Review', 'Draft'],
-            datasets: [{ data: [stats.approved, stats.rejected, stats.submitted, stats.underReview, stats.draft], backgroundColor: ['#10b981','#ef4444','#0284c7','#4f46e5','#94a3b8'], borderWidth: 0 }]
+            datasets: [{ data: [stats.approved, stats.rejected, stats.submitted, stats.underReview, stats.draft], backgroundColor: ['#10b981', '#ef4444', '#0284c7', '#4f46e5', '#94a3b8'], borderWidth: 0 }]
           },
           options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
         });
@@ -1607,7 +1623,7 @@ function renderReportsTab(container, editionId) {
 
   setTimeout(() => {
     if (!window.Chart) return;
-    const palette = ['#4f46e5','#10b981','#d97706','#ef4444','#0284c7','#7e22ce','#0891b2'];
+    const palette = ['#4f46e5', '#10b981', '#d97706', '#ef4444', '#0284c7', '#7e22ce', '#0891b2'];
 
     // Daily line chart
     const dc = document.getElementById('chart-daily');
@@ -1684,8 +1700,8 @@ function _openCreateEditionModal(container, onSelectEdition) {
   backdrop.querySelector('#cancel-ed').addEventListener('click', () => backdrop.remove());
   backdrop.querySelector('#submit-ed').addEventListener('click', () => {
     const name = backdrop.querySelector('#new-ed-name').value.trim();
-    if (!name) { showToast('Edition name is required.','error'); return; }
-    const ed = Store.createEdition({ name, version: backdrop.querySelector('#new-ed-version').value.trim()||name, description: backdrop.querySelector('#new-ed-desc').value.trim(), startDate: backdrop.querySelector('#new-ed-start').value, endDate: backdrop.querySelector('#new-ed-end').value, createdBy: getCurrentUser()?.id });
+    if (!name) { showToast('Edition name is required.', 'error'); return; }
+    const ed = Store.createEdition({ name, version: backdrop.querySelector('#new-ed-version').value.trim() || name, description: backdrop.querySelector('#new-ed-desc').value.trim(), startDate: backdrop.querySelector('#new-ed-start').value, endDate: backdrop.querySelector('#new-ed-end').value, createdBy: getCurrentUser()?.id });
     Store.addAuditLog(getCurrentUser()?.id, `Created edition: ${name}`, 'edition', ed.id);
     showToast(`Edition "${name}" created!`, 'success');
     backdrop.remove();
@@ -1703,12 +1719,12 @@ function _openEditEditionModal(editionId, container, onSelectEdition) {
       <h3 class="modal-title-custom" style="text-align:left;margin-bottom:20px;">Edit: ${ed.name}</h3>
       <div class="form-group-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
         <div class="form-group"><label>Edition Name</label><input type="text" id="edit-ed-name" class="form-input" value="${ed.name}"></div>
-        <div class="form-group"><label>Version</label><input type="text" id="edit-ed-version" class="form-input" value="${ed.version||''}"></div>
+        <div class="form-group"><label>Version</label><input type="text" id="edit-ed-version" class="form-input" value="${ed.version || ''}"></div>
       </div>
-      <div class="form-group" style="margin-bottom:12px;"><label>Description</label><textarea id="edit-ed-desc" class="form-input" rows="2" style="resize:vertical">${ed.description||''}</textarea></div>
+      <div class="form-group" style="margin-bottom:12px;"><label>Description</label><textarea id="edit-ed-desc" class="form-input" rows="2" style="resize:vertical">${ed.description || ''}</textarea></div>
       <div class="form-group-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-        <div class="form-group"><label>Start Date</label><input type="date" id="edit-ed-start" class="form-input" value="${ed.startDate||''}"></div>
-        <div class="form-group"><label>End Date</label><input type="date" id="edit-ed-end" class="form-input" value="${ed.endDate||''}"></div>
+        <div class="form-group"><label>Start Date</label><input type="date" id="edit-ed-start" class="form-input" value="${ed.startDate || ''}"></div>
+        <div class="form-group"><label>End Date</label><input type="date" id="edit-ed-end" class="form-input" value="${ed.endDate || ''}"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button id="cancel-edit-ed" class="btn btn-secondary">Cancel</button>
@@ -1733,7 +1749,7 @@ function _paginationHtml({ page, totalPages, total }) {
   return `<div class="pagination-bar">
     <span class="pagination-info">Page ${page} of ${totalPages} (${total} total)</span>
     <div class="pagination-pages">
-      ${Array.from({length:totalPages},(_,i)=>i+1).map(i=>`<button class="pagination-btn ${i===page?'active':''}" data-page="${i}">${i}</button>`).join('')}
+      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(i => `<button class="pagination-btn ${i === page ? 'active' : ''}" data-page="${i}">${i}</button>`).join('')}
     </div>
   </div>`;
 }
@@ -1874,16 +1890,16 @@ export function renderMappingsTab(container, editionId) {
           <div style="font-size:10.5px; font-weight:700; text-transform:uppercase; color:var(--accent-indigo); margin-bottom:6px; letter-spacing:0.04em;">${ra.name}</div>
           <div style="display:flex; flex-direction:column; gap:6px;">
             ${raAps.map(ap => {
-              // Check if all questions under this AP are assigned to the user
-              const allQAssigned = ap.questions.every(q => q.assignment?.users?.includes(username));
-              const isChecked = allQAssigned ? 'checked' : '';
-              return `
+        // Check if all questions under this AP are assigned to the user
+        const allQAssigned = ap.questions.every(q => q.assignment?.users?.includes(username));
+        const isChecked = allQAssigned ? 'checked' : '';
+        return `
                 <label class="mapping-item-label" style="display:flex; align-items:flex-start; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:11.5px; font-weight:normal; color:var(--text-muted);">
                   <input type="checkbox" id="chk-ap-${ap.id}" class="mapping-ap-chk" data-ap-id="${ap.id}" data-ra-id="${ra.id}" ${isChecked} style="margin-top:2px;">
                   <span>${ap.title}</span>
                 </label>
               `;
-            }).join('')}
+      }).join('')}
           </div>
         </div>
       `;
@@ -1902,14 +1918,14 @@ export function renderMappingsTab(container, editionId) {
                 <div style="font-size:10.5px; font-weight:600; color:var(--text-muted); margin-bottom:6px; border-bottom:1px dashed var(--border-color); padding-bottom:4px;">${ap.title}</div>
                 <div style="display:flex; flex-direction:column; gap:6px;">
                   ${ap.questions.map(q => {
-                    const isChecked = q.assignment?.users?.includes(username) ? 'checked' : '';
-                    return `
+        const isChecked = q.assignment?.users?.includes(username) ? 'checked' : '';
+        return `
                       <label class="mapping-item-label" style="display:flex; align-items:flex-start; gap:6px; cursor:pointer; font-size:11px; font-weight:normal; color:var(--text-main); margin-bottom:2px;">
                         <input type="checkbox" id="chk-q-${q.id}" class="mapping-q-chk" data-q-id="${q.id}" data-ap-id="${ap.id}" data-ra-id="${ra.id}" ${isChecked}>
                         <span><strong>Q ${q.num}:</strong> ${q.text || q.label}</span>
                       </label>
                     `;
-                  }).join('')}
+      }).join('')}
                 </div>
               </div>
             `).join('')}
@@ -1998,8 +2014,8 @@ export function renderMappingsTab(container, editionId) {
 }
 
 export function renderRecycleBin(container, onSelectEdition) {
-  const deletedEditions = Store.getEditions(true).filter(e => e.isDeleted);
-  
+  const deletedEditions = Store.getDeletedEditions();
+
   const cards = deletedEditions.map(ed => {
     return `
       <div class="edition-card" style="opacity:0.8;">

@@ -1,4 +1,4 @@
-import { userPanel, adminPanel, uiState } from '../../app.js';
+import { userPanel, adminPanel, uiState } from '../core/app.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { getApplicationsByUser, getUnreadCount, getDb, getApplicationById, getAnswersByApplication, getEditions, getPendingAssignmentsCount, getEditionById, createApplication, addAuditLog, addNotification, getAssignments, calculateApplicationProgress, calculateApplicationScore, calculateApplicationMaxScore, getFieldById, getFieldsByEdition, forceSave, updateUser, getSectionsByEdition, getFieldsBySection, isSectionAssignedToUser as isSectionAssignedToUserStore, isFieldAssignedToUser as isFieldAssignedToUserStore } from '../db/store.js';
 import { openApplicationForm, _timeAgo, _userFacingStatus, _statusClass } from '../panels/applicationForm.js';
@@ -16,7 +16,8 @@ export function renderUserPortal() {
   userPanel.classList.remove('hidden');
   adminPanel.classList.add('hidden');
   renderUserSidebar();
-  switchUserTab('dashboard');
+  const preservedTab = sessionStorage.getItem('srf_active_user_tab') || 'dashboard';
+  switchUserTab(preservedTab);
 }
 
 export function renderUserSidebar() {
@@ -34,15 +35,15 @@ export function renderUserSidebar() {
   ).length;
 
   const tabs = [
-    { id: 'dashboard',         label: 'My Dashboard',          icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>', badge: '' },
-    { id: 'assigned-editions', label: 'Assigned Editions',     icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
-    { id: 'explore',           label: 'Explore Applications',  icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>', badge: exploreCount > 0 ? String(exploreCount) : '' },
-    { id: 'drafts',            label: 'Drafts',                icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/>', badge: draftCount > 0 ? String(draftCount) : '' },
-    { id: 'approved',          label: 'Approved',              icon: '<circle cx="12" cy="12" r="10"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: '' },
-    { id: 'rejected',          label: 'Rejected',              icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>', badge: '' },
-    { id: 'notifications',     label: 'Notifications',         icon: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>', badge: unread > 0 ? String(unread) : '' },
-    { id: 'messages',          label: 'Messages',              icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
-    { id: 'profile',           label: 'My Profile',            icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', badge: '' }
+    { id: 'dashboard', label: 'My Dashboard', icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>', badge: '' },
+    { id: 'assigned-editions', label: 'Assigned Editions', icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
+    { id: 'explore', label: 'Explore Applications', icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>', badge: exploreCount > 0 ? String(exploreCount) : '' },
+    { id: 'drafts', label: 'Drafts', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/>', badge: draftCount > 0 ? String(draftCount) : '' },
+    { id: 'approved', label: 'Approved', icon: '<circle cx="12" cy="12" r="10"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: '' },
+    { id: 'rejected', label: 'Rejected', icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>', badge: '' },
+    { id: 'notifications', label: 'Notifications', icon: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>', badge: unread > 0 ? String(unread) : '' },
+    { id: 'messages', label: 'Messages', icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
+    { id: 'profile', label: 'My Profile', icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', badge: '' }
   ];
 
   let sidebarHtml = tabs.map(t => `
@@ -72,7 +73,7 @@ export function renderUserSidebar() {
         return `
           <a href="#" class="nav-item section-nav-item ${sec.id === window.activeSectionId ? 'active' : ''}" data-sec="${sec.id}" style="padding-left: 20px;">
             <span class="nav-item-num" style="font-size:10px;min-width:28px;">S${secNum}</span>
-            <span class="nav-item-text" style="font-size:13px;">${secTitle.replace(/^Section \d+:\s*/,'')}</span>
+            <span class="nav-item-text" style="font-size:13px;">${secTitle.replace(/^Section \d+:\s*/, '')}</span>
             <span class="nav-item-badge" style="margin-left:auto;font-size:11px;opacity:0.8;">${answered}/${fields.length}</span>
           </a>
         `;
@@ -118,7 +119,7 @@ export function renderUserSidebar() {
       </div>
       <div class="progress-details" style="margin-top:4px;">
         <span style="font-size:12px;color:var(--text-muted);">Approved</span>
-        <span style="font-size:13px;font-weight:700;color:var(--success)">${apps.filter(a=>a.status==='Approved').length}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--success)">${apps.filter(a => a.status === 'Approved').length}</span>
       </div>
     </div>
   `;
@@ -134,11 +135,12 @@ export function switchUserTab(tab) {
   }
   uiState.currentFormAllowRemainingUploads = false;
   uiState.activeUserTab = tab;
+  sessionStorage.setItem('srf_active_user_tab', tab);
   renderUserSidebar();
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.tab === tab);
   });
-  ['user-dashboard-view','user-form-view','user-history-view'].forEach(id => {
+  ['user-dashboard-view', 'user-form-view', 'user-history-view'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -147,15 +149,15 @@ export function switchUserTab(tab) {
   mainView.classList.remove('hidden');
 
   switch (tab) {
-    case 'dashboard':         renderUserDashboardEnhanced(mainView); break;
+    case 'dashboard': renderUserDashboardEnhanced(mainView); break;
     case 'assigned-editions': renderAssignedEditionsPage(mainView); break;
-    case 'explore':           renderExploreApplications(mainView); break;
-    case 'drafts':            renderUserAppsFiltered(mainView, 'Draft'); break;
-    case 'approved':          renderUserAppsFiltered(mainView, 'Approved'); break;
-    case 'rejected':          renderUserAppsFiltered(mainView, 'Rejected'); break;
-    case 'notifications':     renderNotificationsPage(mainView); break;
-    case 'profile':           renderUserProfilePage(mainView); break;
-    case 'messages':          renderMessagesTab(mainView); break;
+    case 'explore': renderExploreApplications(mainView); break;
+    case 'drafts': renderUserAppsFiltered(mainView, 'Draft'); break;
+    case 'approved': renderUserAppsFiltered(mainView, 'Approved'); break;
+    case 'rejected': renderUserAppsFiltered(mainView, 'Rejected'); break;
+    case 'notifications': renderNotificationsPage(mainView); break;
+    case 'profile': renderUserProfilePage(mainView); break;
+    case 'messages': renderMessagesTab(mainView); break;
   }
 }
 
@@ -193,13 +195,13 @@ export function renderApplyPage(container) {
     ` : `
       <div class="editions-grid">
         ${publishedEditions.map(ed => {
-          const sections = getSectionsByEdition(ed.id).filter(sec => isSectionAssignedToUser(sec, user));
-          const fields = sections.reduce((acc, sec) => {
-            const secFields = getFieldsBySection(sec.id).filter(f => isFieldAssignedToUser(f, user));
-            return acc + secFields.length;
-          }, 0);
-          const pendingTasks = getPendingAssignmentsCount(user.id, ed.id);
-          return `
+    const sections = getSectionsByEdition(ed.id).filter(sec => isSectionAssignedToUser(sec, user));
+    const fields = sections.reduce((acc, sec) => {
+      const secFields = getFieldsBySection(sec.id).filter(f => isFieldAssignedToUser(f, user));
+      return acc + secFields.length;
+    }, 0);
+    const pendingTasks = getPendingAssignmentsCount(user.id, ed.id);
+    return `
             <div class="edition-card" style="cursor:pointer;" data-edition-id="${ed.id}">
               <div class="edition-card-header">
                 <div class="edition-card-title-row">
@@ -219,7 +221,7 @@ export function renderApplyPage(container) {
               </div>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     `}
   `;
@@ -266,8 +268,8 @@ export function renderAssignedEditionsPage(container) {
   const apps = getApplicationsByUser(user.id);
 
   // Categorize editions into 3 clean tabs
-  const activeEditions   = []; // No application yet → Start Application
-  const startedEditions  = []; // Draft or Docs Requested → Continue
+  const activeEditions = []; // No application yet → Start Application
+  const startedEditions = []; // Draft or Docs Requested → Continue
   const completedEditions = []; // Submitted, Approved, Rejected → View Submission
 
   assignedEditionIds.forEach(eid => {
@@ -595,9 +597,9 @@ export function renderExploreApplications(container) {
   const state = window.exploreAppsState;
 
   const TAB_STATUSES = {
-    'All':            ['Draft', 'Submitted', 'Resubmitted', 'Under Review', 'Additional Documents Requested'],
-    'Drafts':         ['Draft'],
-    'Submitted':      ['Submitted', 'Resubmitted', 'Under Review'],
+    'All': ['Draft', 'Submitted', 'Resubmitted', 'Under Review', 'Additional Documents Requested'],
+    'Drafts': ['Draft'],
+    'Submitted': ['Submitted', 'Resubmitted', 'Under Review'],
     'Docs Requested': ['Additional Documents Requested'],
   };
 
@@ -625,19 +627,19 @@ export function renderExploreApplications(container) {
     });
 
     const counts = {};
-    Object.keys(TAB_STATUSES).forEach(function(tab) {
+    Object.keys(TAB_STATUSES).forEach(function (tab) {
       counts[tab] = allApps.filter(a => TAB_STATUSES[tab].includes(a.status)).length;
     });
 
-    const tStyle = function(id) {
+    const tStyle = function (id) {
       return 'background:none;border:none;border-bottom:2px solid ' + (state.activeTab === id ? 'var(--primary)' : 'transparent') + ';padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;color:' + (state.activeTab === id ? 'var(--primary)' : 'var(--text-muted)') + ';transition:color 0.2s,border-color 0.2s;';
     };
 
-    const tabsHtml = Object.keys(TAB_STATUSES).map(function(tab) {
+    const tabsHtml = Object.keys(TAB_STATUSES).map(function (tab) {
       return '<button class="explore-tab-link" data-tab="' + tab + '" style="' + tStyle(tab) + '">' + tab + ' <span style="background:rgba(99,102,241,0.1);color:var(--accent-indigo);font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;">' + counts[tab] + '</span></button>';
     }).join('');
 
-    const cardsHtml = apps.map(function(app) {
+    const cardsHtml = apps.map(function (app) {
       const edition = getEditionById(app.editionId);
       const score = calculateApplicationScore(app.id) || 0;
       const maxScore = calculateApplicationMaxScore(app.id) || 1;
@@ -686,21 +688,21 @@ export function renderExploreApplications(container) {
         ? '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:16px;">📂</div><h3 style="font-size:16px;font-weight:700;margin-bottom:8px;">No applications found</h3><p style="font-size:13px;">' + emptyMsg + '</p></div>'
         : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;">' + cardsHtml + '</div>');
 
-    container.querySelectorAll('.explore-tab-link').forEach(function(btn) { btn.addEventListener('click', function() { state.activeTab = btn.dataset.tab; renderContent(); }); });
+    container.querySelectorAll('.explore-tab-link').forEach(function (btn) { btn.addEventListener('click', function () { state.activeTab = btn.dataset.tab; renderContent(); }); });
     var searchEl = container.querySelector('#explore-search');
-    if (searchEl) searchEl.addEventListener('input', function(e) { state.search = e.target.value; renderContent(); var inp = container.querySelector('#explore-search'); if (inp) { inp.focus(); var v = inp.value; inp.value = ''; inp.value = v; } });
+    if (searchEl) searchEl.addEventListener('input', function (e) { state.search = e.target.value; renderContent(); var inp = container.querySelector('#explore-search'); if (inp) { inp.focus(); var v = inp.value; inp.value = ''; inp.value = v; } });
     var sortEl = container.querySelector('#explore-sort');
-    if (sortEl) sortEl.addEventListener('change', function(e) { state.sortBy = e.target.value; renderContent(); });
+    if (sortEl) sortEl.addEventListener('change', function (e) { state.sortBy = e.target.value; renderContent(); });
     var sortDirEl = container.querySelector('#explore-sort-dir');
-    if (sortDirEl) sortDirEl.addEventListener('click', function() { state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc'; renderContent(); });
-    container.querySelectorAll('.explore-btn-continue').forEach(function(btn) { btn.addEventListener('click', function() { openApplicationForm(btn.dataset.id, container); }); });
-    container.querySelectorAll('.explore-btn-workspace').forEach(function(btn) { btn.addEventListener('click', function() { openApplicationDetail(btn.dataset.id, container); }); });
-    container.querySelectorAll('.explore-btn-delete').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
+    if (sortDirEl) sortDirEl.addEventListener('click', function () { state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc'; renderContent(); });
+    container.querySelectorAll('.explore-btn-continue').forEach(function (btn) { btn.addEventListener('click', function () { openApplicationForm(btn.dataset.id, container); }); });
+    container.querySelectorAll('.explore-btn-workspace').forEach(function (btn) { btn.addEventListener('click', function () { openApplicationDetail(btn.dataset.id, container); }); });
+    container.querySelectorAll('.explore-btn-delete').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
         const confirmed = await showConfirm({ title: 'Delete Draft', message: 'Permanently delete this draft? This cannot be undone.', type: 'danger' });
         if (!confirmed) return;
         const db = getDb();
-        const idx = db.applications.findIndex(function(a) { return a.id === btn.dataset.id; });
+        const idx = db.applications.findIndex(function (a) { return a.id === btn.dataset.id; });
         if (idx !== -1) { db.applications.splice(idx, 1); await forceSave(); renderUserSidebar(); showToast('Draft deleted.', 'success'); renderContent(); }
       });
     });
@@ -711,7 +713,7 @@ export function renderExploreApplications(container) {
 
 export function renderUserAppsFiltered(container, status) {
   const user = getCurrentUser();
-  
+
   if (window.appsFilterState === undefined) {
     window.appsFilterState = {
       search: '',
@@ -733,7 +735,7 @@ export function renderUserAppsFiltered(container, status) {
 
   const renderContent = () => {
     let rawApps = getApplicationsByUser(user.id);
-    
+
     if (status === 'Submitted') {
       rawApps = rawApps.filter(a => ['Submitted', 'Resubmitted', 'Under Review', 'Additional Documents Requested'].includes(a.status));
     } else {
@@ -1072,7 +1074,7 @@ export function openApplicationDetail(appId, container) {
     switchUserTab('dashboard');
     return;
   }
-  
+
   // Render the modern workspace
   renderTabbedApplicationWorkspace(container, appId);
 }
@@ -1080,7 +1082,7 @@ export function openApplicationDetail(appId, container) {
 export function renderUserProfilePage(container) {
   const user = getCurrentUser();
   const isStateUser = user.role === 'user';
-  
+
   let profileFieldsHtml = '';
   if (isStateUser) {
     profileFieldsHtml = `
@@ -1192,7 +1194,7 @@ export function renderUserProfilePage(container) {
     const organization = container.querySelector('#prof-org').value.trim();
     let state = '';
     let district = '';
-    
+
     if (isStateUser) {
       state = container.querySelector('#prof-state').value;
       district = container.querySelector('#prof-district').value;

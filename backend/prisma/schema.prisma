@@ -1,0 +1,215 @@
+// ========================================================
+// DATABASE CONNECTION & GENERATOR
+// ========================================================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================================
+// 1. IDENTITY & ACCESS MANAGEMENT (IAM)
+// ========================================================
+
+model User {
+  id             String    @id @default(uuid())
+  username       String    @unique
+  email          String?   @unique
+  password       String
+  role           Role      @default(USER)
+
+  name           String?   
+  organization   String?   
+  state          String?
+  district       String?
+  category       String?
+  sector         String?
+  startupName    String?
+  
+  refreshToken   String?
+  lastLogin      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+model Admin {
+  id             String    @id @default(uuid())
+  username       String    @unique
+  email          String?   @unique
+  password       String
+  role           Role      @default(ADMIN)
+
+  name           String?   
+  organization   String?   
+  state          String?
+  district       String?
+  otp            String?
+  lastIp         String?
+  lastUserAgent  String?
+  
+  refreshToken   String?
+  lastLogin      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  REVIEWER
+  USER
+}
+
+// ========================================================
+// 2. ANALYTICS & COMPLIANCE ENGINE (JSON-B STORES)
+// ========================================================
+
+model Application {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model ApplicationAnswer {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model ReformArea {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model FormField {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model SchemaVersion {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+// ========================================================
+// 3. COLLABORATION & COMMUNICATION
+// ========================================================
+
+model Message {
+  id           String   @id @default(uuid())
+  senderId     String
+  receiverId   String
+  content      String
+  timestamp    DateTime @default(now())
+  isRead       Boolean  @default(false)
+  
+  senderName   String?
+  senderRole   String?
+  receiverName String?
+  receiverRole String?
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  event     String
+  link      String?
+  isRead    Boolean  @default(false)
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+// ========================================================
+// 4. TASK & ASSIGNMENT WORKFLOWS
+// ========================================================
+
+model Assignment {
+  id            String   @id @default(uuid())
+  userId        String
+  editionId     String
+  type          String
+  sectionId     String?
+  reformAreaId  String?
+  questionId    String?
+  fieldId       String?
+  actionPointId String?
+  createdAt     DateTime @default(now())
+}
+
+model ReassignmentHistory {
+  id           String   @id @default(uuid())
+  assignmentId String
+  oldUserId    String
+  newUserId    String
+  reason       String?
+  changedBy    String
+  timestamp    DateTime @default(now())
+}
+
+// ========================================================
+// 5. SYSTEM GOVERNANCE & SECURITY
+// ========================================================
+
+model Edition {
+  id          String   @id @default(uuid())
+  name        String
+  version     String
+  description String?
+  startDate   String?
+  endDate     String?
+  status      String   @default("draft")
+  createdBy   String
+  createdAt   DateTime @default(now())
+  categories  Json?      @default("[]")
+  totalMarks  Int      @default(0)
+  isDeleted   Boolean  @default(false)
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  username    String
+  role        String
+  action      String
+  entityType  String
+  entityId    String
+  details     String?
+  timestamp   DateTime @default(now())
+  date        String
+  time        String
+  ipAddress   String?
+}
+
+model RecycleBin {
+  id          String   @id @default(uuid())
+  entityType  String
+  entityId    String
+  deletedBy   String
+  deletedAt   DateTime @default(now())
+  originalData Json?
+}
+
+model Guideline {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model DocumentRule {
+  id    String @id @default(uuid())
+  data  Json
+}
+
+model Settings {
+  id    String @id @default(uuid())
+  data  Json
+}

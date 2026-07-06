@@ -1,4 +1,4 @@
-import { uiState } from '../../app.js';
+import { uiState } from '../core/app.js';
 import { getApplicationById, getLockStatus, releaseLock, acquireLock, getEditionById, isSectionAssignedToUser, getAnswersByApplication, isFieldAssignedToUser, getGuidelines, isQuestionFilled, calculateApplicationProgress, saveAnswerCompliance, submitQuestion, saveAnswer, forceSave, addToRecycleBin, updateApplication, addNotification, addAuditLog, submitReformArea, getAllAssignments, getFieldsByEdition, submitApplication, getSectionsByEdition, getFieldsBySection } from '../db/store.js';
 import { getCurrentUser } from '../auth/auth.js';
 import { renderUserSidebar, switchUserTab, getGuidelinePageForQuestion } from '../panels/userPanel.js';

@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backendPort = env.VITE_LOCAL_BACKEND || 5001;
+  const backendPort = env.VITE_LOCAL_BACKEND || 5000;
 
   return {
     server: {
@@ -10,32 +10,32 @@ export default defineConfig(({ mode }) => {
       open: true,
       proxy: {
         '/api': {
-          target: `http://localhost:${backendPort}`,
+          target: `http://127.0.0.1:${backendPort}`,
           changeOrigin: true,
           secure: false
         }
       }
     },
-  build: {
-    chunkSizeWarningLimit: 600,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('/src/db/')) {
-            return 'db-core';
-          }
-          if (id.includes('/src/modules/')) {
-            return 'modules';
-          }
-          if (id.includes('/src/ui/')) {
-            return 'ui-components';
-          }
-          if (id.includes('/src/auth/')) {
-            return 'auth';
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('/src/db/')) {
+              return 'db-core';
+            }
+            if (id.includes('/src/modules/')) {
+              return 'modules';
+            }
+            if (id.includes('/src/ui/')) {
+              return 'ui-components';
+            }
+            if (id.includes('/src/auth/')) {
+              return 'auth';
+            }
           }
         }
       }
     }
-  }
   }
 });

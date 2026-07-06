@@ -11,7 +11,7 @@ let activeContactId = null;
 export function openProfileModal() {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
-  
+
   const user = getUserById(currentUser.id) || currentUser;
   const isStateUser = user.role === 'user';
 
@@ -94,7 +94,7 @@ export function openProfileModal() {
 
   document.body.appendChild(backdrop);
   const close = () => backdrop.remove();
-  
+
   backdrop.querySelector('#btn-close-profile-modal').addEventListener('click', close);
   backdrop.querySelector('#btn-cancel-profile-modal').addEventListener('click', close);
 
@@ -123,17 +123,66 @@ export function openProfileModal() {
     });
   }
 
-  backdrop.querySelector('#modal-profile-form').addEventListener('submit', (e) => {
+  backdrop.querySelector('#modal-profile-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = backdrop.querySelector('#modal-prof-name').value.trim();
     const email = backdrop.querySelector('#modal-prof-email').value.trim();
     const organization = backdrop.querySelector('#modal-prof-org').value.trim();
-    
+
     let state = '';
     let district = '';
     if (isStateUser) {
       state = backdrop.querySelector('#modal-prof-state').value;
       district = backdrop.querySelector('#modal-prof-district').value;
+    }
+
+    if (!isStateUser) {
+      try {
+        const btn = backdrop.querySelector('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Saving...';
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        try {
+          const sessionRaw = sessionStorage.getItem('srf_session_v2');
+          if (sessionRaw) {
+            const sess = JSON.parse(sessionRaw);
+            if (sess && sess.token) {
+              headers['Authorization'] = 'Bearer ' + sess.token;
+            }
+          }
+        } catch (e) { }
+
+        const res = await fetch('/api/admin/profile', {
+          method: 'PUT',
+          headers: headers,
+          credentials: 'omit',
+          body: JSON.stringify({ name, email, organization })
+        });
+
+        if (!res.ok) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save Profile Changes';
+          }
+          let errorMsg = 'Failed to update admin profile';
+          try {
+            const err = await res.json();
+            errorMsg = err.error || errorMsg;
+          } catch (err) { }
+          return showToast(errorMsg, 'error');
+        }
+
+        const data = await res.json();
+        if (data.success && data.user) {
+          Object.assign(user, data.user);
+        }
+      } catch (err) {
+        console.error('Error updating admin profile:', err);
+        return showToast('Network error while updating profile', 'error');
+      }
     }
 
     updateUser(user.id, {
@@ -167,9 +216,7 @@ export function renderMessagesTab(container) {
 
   // Filter contacts (Admins/Superadmins see Users; Users see Admins/Superadmins)
   const allUsers = getUsers();
-  const contacts = (currentUser.role === 'superadmin' || currentUser.role === 'admin')
-    ? allUsers.filter(u => u.role === 'user')
-    : allUsers.filter(u => u.role === 'admin' || u.role === 'superadmin');
+  const contacts = allUsers.filter(u => u.id !== currentUser.id);
 
   container.innerHTML = `
     <div class="chat-wrapper" style="margin-top:20px;">
@@ -194,8 +241,8 @@ export function renderMessagesTab(container) {
 
   function renderContactList() {
     const searchVal = container.querySelector('#chat-contact-search')?.value.toLowerCase() || '';
-    const filteredContacts = contacts.filter(c => 
-      (c.name || '').toLowerCase().startsWith(searchVal) || 
+    const filteredContacts = contacts.filter(c =>
+      (c.name || '').toLowerCase().startsWith(searchVal) ||
       (c.username || '').toLowerCase().startsWith(searchVal)
     );
 
@@ -220,14 +267,14 @@ export function renderMessagesTab(container) {
         const cid = item.dataset.id;
         activeContactId = cid;
         markMessagesRead(cid, currentUser.id);
-        
+
         // Re-render sidebar to update unread badge
         if (isAdmin() || isSuperAdmin()) {
           renderAdminSidebar();
         } else {
           renderUserSidebar();
         }
-        
+
         renderContactList();
         renderChatArea(cid);
       });
@@ -307,7 +354,7 @@ export function renderMessagesTab(container) {
         const localDb = getDb();
         if (remoteDb.messages && JSON.stringify(remoteDb.messages) !== JSON.stringify(localDb.messages || [])) {
           localDb.messages = remoteDb.messages;
-          
+
           // Refresh thread if active
           if (activeContactId) {
             // Also mark new incoming messages as read if thread is currently open

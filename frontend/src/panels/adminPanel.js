@@ -1,6 +1,6 @@
-import { adminPanel, userPanel, uiState } from '../../app.js';
+import { adminPanel, userPanel, uiState } from '../core/app.js';
 import { getCurrentUser, isSuperAdmin, isAdmin, login } from '../auth/auth.js';
-import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment, getSectionsByEdition, getFieldsBySection } from '../db/store.js';
+import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment, getSectionsByEdition, getFieldsBySection, fetchAllAdmins, updateAdminAPI, deleteAdminAPI, updateUserAPI, deleteUserAPI } from '../db/store.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
 import { renderAdminAnalyticsDashboard } from '../modules/advancedDashboard.js';
 import { renderAssignedDetailsPanel } from '../panels/publisherPanel.js';
@@ -30,7 +30,8 @@ export function renderAdminPortal() {
 
   // Build sidebar
   renderAdminSidebar();
-  switchAdminTab('analytics');
+  const preservedTab = sessionStorage.getItem('srf_active_admin_tab') || 'analytics';
+  switchAdminTab(preservedTab);
 }
 
 export function renderAdminSidebar() {
@@ -41,16 +42,17 @@ export function renderAdminSidebar() {
   document.getElementById('sidebar-title').textContent = 'Admin Panel';
 
   const tabs = [
-    { id: 'analytics',  label: 'Analytics Dashboard', icon: '<path d="M18 20V10M12 20V4M6 20v-6"/>', badge: '' },
-    { id: 'editions',   label: 'Editions Dashboard', icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
+    { id: 'analytics', label: 'Analytics Dashboard', icon: '<path d="M18 20V10M12 20V4M6 20v-6"/>', badge: '' },
+    { id: 'editions', label: 'Editions Dashboard', icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
 
-    { id: 'users',      label: 'Manage Users',        icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', badge: '' },
-    { id: 'audit',      label: 'Audit Logs',          icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>', badge: '' },
-    { id: 'settings',   label: 'Data Management',     icon: '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path>', badge: '' },
-    { id: 'messages',   label: 'Messages',            icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
+    { id: 'users', label: 'Manage Users', icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', badge: '' },
+    { id: 'audit', label: 'Audit Logs', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>', badge: '' },
+    { id: 'settings', label: 'Data Management', icon: '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path>', badge: '' },
+    { id: 'messages', label: 'Messages', icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', badge: unreadMessages > 0 ? String(unreadMessages) : '' },
   ];
 
   if (isSuperAdmin()) {
+    tabs.push({ id: 'admins', label: 'Manage Admins', icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', badge: '' });
     tabs.push({ id: 'departments', label: 'Manage Departments', icon: '<path d="M4 21h16M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16H4V5zm4 4h2v2H8V9zm0 6h2v2H8v-2zm6-6h2v2h-2V9zm0 6h2v2h-2v-2z"/>', badge: '' });
     tabs.push({ id: 'assigned-details', label: 'Reassign Tasks', icon: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', badge: '' });
     tabs.push({ id: 'recycle-bin', label: 'Recycle Bin', icon: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>', badge: '' });
@@ -90,6 +92,7 @@ export function switchAdminTab(tab) {
     window.chatPollingInterval = null;
   }
   uiState.activeAdminTab = tab;
+  sessionStorage.setItem('srf_active_admin_tab', tab);
 
   // Update nav highlights
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(item => {
@@ -97,11 +100,11 @@ export function switchAdminTab(tab) {
   });
 
   // Hide all admin views
-   ['admin-analytics-view','admin-editions-view','admin-tracker-view','schema-editor-panel',
-    'admin-users-view','admin-guidelines-view','admin-audit-view','admin-settings-view','admin-departments-view','admin-assigned-details-view','admin-messages-view','admin-recycle-bin-view','admin-governance-view'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
+  ['admin-analytics-view', 'admin-editions-view', 'admin-tracker-view', 'schema-editor-panel',
+    'admin-users-view', 'admin-admins-view', 'admin-guidelines-view', 'admin-audit-view', 'admin-settings-view', 'admin-departments-view', 'admin-assigned-details-view', 'admin-messages-view', 'admin-recycle-bin-view', 'admin-governance-view'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
 
   const showView = (id) => {
     const el = document.getElementById(id);
@@ -134,6 +137,11 @@ export function switchAdminTab(tab) {
     case 'users':
       showView('admin-users-view');
       renderUsersPanel(document.getElementById('admin-users-view'));
+      break;
+
+    case 'admins':
+      showView('admin-admins-view');
+      renderAdminsPanel(document.getElementById('admin-admins-view'));
       break;
 
     case 'guidelines':
@@ -187,11 +195,11 @@ export function openEditionTracker(editionId) {
   uiState.activeAdminTab = 'tracker';
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(i => i.classList.remove('active'));
 
-  ['admin-editions-view','admin-tracker-view','schema-editor-panel',
-   'admin-users-view','admin-guidelines-view','admin-audit-view','admin-settings-view','admin-assigned-details-view','admin-messages-view','admin-recycle-bin-view'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
+  ['admin-editions-view', 'admin-tracker-view', 'schema-editor-panel',
+    'admin-users-view', 'admin-guidelines-view', 'admin-audit-view', 'admin-settings-view', 'admin-assigned-details-view', 'admin-messages-view', 'admin-recycle-bin-view'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
 
   const trackerEl = document.getElementById('admin-tracker-view');
   trackerEl.classList.remove('hidden');
@@ -239,7 +247,7 @@ export function renderSchemaEditorAdmin(container) {
           const apId = f.actionPointId || `${sec.id}_ap0`;
           const apTitle = f.actionPointTitle || 'Questions';
           if (!apMap[apId]) apMap[apId] = { id: apId, title: apTitle, questions: [] };
-          
+
           let parsedElements = f.elements || [];
           if (typeof parsedElements === 'string') {
             try {
@@ -348,8 +356,8 @@ export function renderSchemaEditorAdmin(container) {
                 url: q.url || '',
                 content: q.content || '',
                 orderIndex: orderIdx++,
-                isLayoutElement: ['heading','subheading','description','instruction','divider','card','banner','notes','warning','image','hyperlink'].includes(q.fieldType),
-                isUploadElement: ['file','pdf','imageupload'].includes(q.fieldType),
+                isLayoutElement: ['heading', 'subheading', 'description', 'instruction', 'divider', 'card', 'banner', 'notes', 'warning', 'image', 'hyperlink'].includes(q.fieldType),
+                isUploadElement: ['file', 'pdf', 'imageupload'].includes(q.fieldType),
                 docs: q.docs || [],
                 guidelinePage: q.guidelinePage || null,
                 createdAt: new Date().toISOString(),
@@ -388,21 +396,21 @@ export function renderSchemaEditorAdmin(container) {
 }
 
 export function renderUsersPanel(container) {
-  const users = getUsers();
+  const users = getUsers().filter(u => String(u.role).toLowerCase() === 'user');
   const rows = users.map(u => `
     <tr>
-      <td><code style="font-size:11px;word-break:break-all;">${u.id}</code></td>
+      <td><code style="font-size:11px;word-break:break-all;">${String(u.id).substring(0, 8)}...</code></td>
       <td><strong>${u.name || u.username}</strong><br><small style="color:var(--text-muted)">${u.username}</small></td>
       <td style="word-break:break-all;">${u.email || '—'}</td>
       <td><span class="role-badge" style="font-size:11px;">${u.role}</span></td>
       <td style="word-break:break-word;">${u.organization || '—'}</td>
       <td>${u.state || '—'}</td>
       <td>
-        <div class="action-btns" style="flex-wrap:wrap;">
-          ${u.role === 'user' && isSuperAdmin() ? `<button class="btn btn-action-text btn-assign-user" data-id="${u.id}">Assign</button>` : ''}
-          <button class="btn btn-action-text btn-edit-user" data-id="${u.id}">Edit</button>
-          ${u.role !== 'superadmin' ? `<button class="btn btn-action-text btn-danger btn-delete-user" data-id="${u.id}">Delete</button>` : ''}
-          ${isSuperAdmin() && u.role !== 'superadmin' ? `<button class="btn btn-action-text btn-deactivate-user" data-id="${u.id}">${u.active === false ? 'Activate' : 'Deactivate'}</button>` : ''}
+        <div class="action-btns" style="flex-wrap:wrap; gap:8px;">
+          ${u.role === 'user' && isSuperAdmin() ? `<button class="btn btn-action-text btn-primary btn-assign-user" data-id="${u.id}" style="padding:4px 8px;font-size:11px;">Assign</button>` : ''}
+          <button class="btn btn-action-text btn-outline btn-edit-user" data-id="${u.id}" style="padding:4px 8px;font-size:11px;">✏️ Edit</button>
+          ${u.role !== 'superadmin' ? `<button class="btn btn-action-text btn-danger btn-delete-user" data-id="${u.id}" style="padding:4px 8px;font-size:11px;">🗑️ Delete</button>` : ''}
+          ${isSuperAdmin() && u.role !== 'superadmin' ? `<button class="btn btn-action-text btn-deactivate-user" data-id="${u.id}" style="padding:4px 8px;font-size:11px;color: ${u.isActive === false ? 'var(--success)' : '#ea580c'}">${u.isActive === false ? 'Activate' : 'Deactivate'}</button>` : ''}
         </div>
       </td>
     </tr>
@@ -413,12 +421,11 @@ export function renderUsersPanel(container) {
       <div>
         <div class="page-eyebrow" style="color: #7c3aed; background: #ede9fe; padding: 4px 12px; border-radius: 6px; display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">User Management</div>
         <h1 class="page-title">Manage Users</h1>
-        <p class="page-subtitle">View, assign and manage all registered users across editions. ${isSuperAdmin() ? 'Create new admin accounts below.' : ''}</p>
+        <p class="page-subtitle">View, assign and manage all registered users across editions.</p>
       </div>
       ${isSuperAdmin() || isAdmin() ? `
         <div style="display:flex;gap:10px; align-items:center;">
-          ${isSuperAdmin() ? `<button class="btn btn-primary btn-lg" id="btn-create-admin">+ Create Admin</button>` : ''}
-          <button class="btn btn-secondary btn-lg" id="btn-create-user" style="background:#fff;">+ Create User</button>
+          <button class="btn btn-primary btn-lg" id="btn-create-user">+ Create User</button>
           <button class="btn btn-outline btn-lg" id="btn-bulk-import-users" style="background:#fff;">📂 Bulk Import Users</button>
         </div>
       ` : ''}
@@ -483,20 +490,34 @@ export function renderUsersPanel(container) {
     btn.addEventListener('click', () => openAssignmentModal(btn.dataset.id, container));
   });
 
+  // Edit User
+  container.querySelectorAll('.btn-edit-user').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const u = users.find(x => x.id === btn.dataset.id);
+      if (u) openEditUserModal(u, container);
+    });
+  });
+
   // Delete User
   container.querySelectorAll('.btn-delete-user').forEach(btn => {
     btn.addEventListener('click', () => {
-      const u = getUserById(btn.dataset.id);
+      const u = users.find(x => x.id === btn.dataset.id);
       showConfirm({
         title: 'Delete User Account',
         message: `Are you sure you want to permanently delete user <strong>${u?.username}</strong>? This action cannot be undone.`,
         type: 'danger',
         confirmText: 'Delete User',
-        onConfirm: () => {
-          deleteUser(btn.dataset.id);
-          addAuditLog(getCurrentUser().id, `Deleted user account: ${u?.username}`, 'user', btn.dataset.id);
-          showToast('User deleted successfully.', 'success');
-          renderUsersPanel(container);
+        onConfirm: async () => {
+          btn.disabled = true;
+          try {
+            await deleteUserAPI(btn.dataset.id);
+            addAuditLog(getCurrentUser().id, `Deleted user account: ${u?.username}`, 'user', btn.dataset.id);
+            showToast('User deleted successfully natively.', 'success');
+            renderUsersPanel(container);
+          } catch (e) {
+            showToast(e.message, 'error');
+            btn.disabled = false;
+          }
         }
       });
     });
@@ -504,17 +525,6 @@ export function renderUsersPanel(container) {
 
   // Deactivate User toggle
   container.querySelectorAll('.btn-deactivate-user').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const u = getUserById(btn.dataset.id);
-      const newStatus = u.active === false;
-      updateUser(btn.dataset.id, { active: newStatus });
-      showToast(`User ${newStatus ? 'activated' : 'deactivated'}.`, 'success');
-      renderUsersPanel(container);
-    });
-  });
-
-  // Edit User details
-  container.querySelectorAll('.btn-edit-user').forEach(btn => {
     btn.addEventListener('click', () => openEditUserModal(btn.dataset.id, container));
   });
 }
@@ -621,12 +631,12 @@ export function openBulkImportUsersModal(container) {
         \` : ''}
       `;
       showToast(`Bulk registration complete. Imported ${res.createdCount} users.`, 'success');
-      
+
       // Refresh User directory panel in background
       if (container) {
         renderUsersPanel(container);
       }
-      
+
       submitBtn.disabled = false;
       submitBtn.textContent = 'Import Users';
     } catch (err) {
@@ -660,10 +670,15 @@ export function openCreateUserModal(container) {
           </div>
           <div class="form-group">
             <label for="reg-org">Department / Organization</label>
-            <select id="reg-org" required class="form-select">
-              <option value="" disabled selected>Select Department</option>
-              ${deptOptionsHtml || '<option value="" disabled>No departments available. Please create departments first.</option>'}
-            </select>
+            <input type="text" id="reg-org" required class="form-input" list="reg-org-options" placeholder="e.g. IT Dept or Startup Corp">
+            <datalist id="reg-org-options">
+              <option value="Department of Industries & Commerce (IND)">Department of Industries & Commerce (IND)</option>
+              <option value="Department of Information Technology (IT)">Department of Information Technology (IT)</option>
+              <option value="Department of Science & Technology (SNT)">Department of Science & Technology (SNT)</option>
+              <option value="Department of Finance (FIN)">Department of Finance (FIN)</option>
+              <option value="Department of Environment & Forests (ENV)">Department of Environment & Forests (ENV)</option>
+              ${deptOptionsHtml}
+            </datalist>
           </div>
         </div>
         <div class="form-group-row">
@@ -736,11 +751,14 @@ export function openCreateUserModal(container) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = backdrop.querySelector('#reg-username').value.replace(/\s+/g, '').toLowerCase();
-    const state    = backdrop.querySelector('#reg-state').value.trim();
-    const officer  = backdrop.querySelector('#reg-officer').value.trim();
+    const state = backdrop.querySelector('#reg-state').value.trim();
+    const officer = backdrop.querySelector('#reg-officer').value.trim();
     const district = backdrop.querySelector('#reg-district').value.trim();
-    const email    = backdrop.querySelector('#reg-email').value.trim();
+    const email = backdrop.querySelector('#reg-email').value.trim();
     const organization = backdrop.querySelector('#reg-org').value;
+    const category = backdrop.querySelector('#reg-category')?.value || '';
+    const sector = backdrop.querySelector('#reg-sector')?.value || '';
+    const startupName = backdrop.querySelector('#reg-startupname')?.value.trim() || '';
 
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
@@ -750,10 +768,8 @@ export function openCreateUserModal(container) {
       username, email,
       role: 'user',
       name: officer,
-      organization,
-      category: '', state, district, sector: '',
-      nodalOfficer: officer,
-      startupName: ''
+      organization, state, district,
+      category, sector, startupName
     });
 
     if (result.error) {
@@ -765,7 +781,7 @@ export function openCreateUserModal(container) {
 
     addAuditLog(getCurrentUser().id, `Registered state user: ${username}`, 'user', result.id);
     close();
-    
+
     // Simple credential popup - plain text, no toggle buttons
     (() => {
       const pwd = result.tempPassword;
@@ -777,9 +793,9 @@ export function openCreateUserModal(container) {
         <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">User &ldquo;<strong>${username}</strong>&rdquo; has been successfully created.</p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:left;margin-bottom:16px;">
           <div style="margin-bottom:12px;"><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Username</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;">${username}</div></div>
-          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
+          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Temporary Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
         </div>
-        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Login credentials emailed to <strong>${email}</strong>.</p>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Use these credentials to log in. You will be prompted to change it later.</p>
         <button id="u-ok" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:11px 36px;font-size:15px;font-weight:600;cursor:pointer;">OK</button>
       </div>`;
       document.body.appendChild(d);
@@ -791,9 +807,6 @@ export function openCreateUserModal(container) {
 }
 
 export function openCreateAdminModal(container) {
-  const depts = getDepartments();
-  const deptOptionsHtml = depts.map(d => `<option value="${d.name}">${d.name} (${d.code})</option>`).join('');
-
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom';
   backdrop.innerHTML = `
@@ -823,10 +836,14 @@ export function openCreateAdminModal(container) {
           </div>
           <div class="form-group">
             <label for="admin-org">Organization / Department</label>
-            <select id="admin-org" required class="form-select">
-              <option value="" disabled selected>Select Department</option>
-              ${deptOptionsHtml || '<option value="" disabled>No departments available. Please create departments first.</option>'}
-            </select>
+            <input type="text" id="admin-org" required class="form-input" list="admin-org-options" placeholder="e.g. IT Department or Startup Corp">
+            <datalist id="admin-org-options">
+              <option value="Department of Industries & Commerce (IND)">Department of Industries & Commerce (IND)</option>
+              <option value="Department of Information Technology (IT)">Department of Information Technology (IT)</option>
+              <option value="Department of Science & Technology (SNT)">Department of Science & Technology (SNT)</option>
+              <option value="Department of Finance (FIN)">Department of Finance (FIN)</option>
+              <option value="Department of Environment & Forests (ENV)">Department of Environment & Forests (ENV)</option>
+            </datalist>
           </div>
         </div>
         <div class="form-group-row">
@@ -937,16 +954,16 @@ export function openCreateAdminModal(container) {
         <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Admin &ldquo;<strong>${username}</strong>&rdquo; has been successfully created.</p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:left;margin-bottom:16px;">
           <div style="margin-bottom:12px;"><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Username</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;">${username}</div></div>
-          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
+          <div><div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Temporary Password</div><div style="font-size:15px;font-weight:600;color:#1e293b;font-family:monospace;letter-spacing:2px;">********</div></div>
         </div>
-        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Login credentials emailed to <strong>${email}</strong>.</p>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 20px;">Use these credentials to log in. You will be prompted to change it later.</p>
         <button id="a-ok" style="background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:8px;padding:11px 36px;font-size:15px;font-weight:600;cursor:pointer;">OK</button>
       </div>`;
       document.body.appendChild(d);
       d.querySelector('#a-ok').addEventListener('click', () => d.remove());
     })();
 
-    renderUsersPanel(container);
+    renderAdminsPanel(container);
   });
 }
 
@@ -967,7 +984,7 @@ export function openAssignmentModal(userId, container) {
     const totalReformAreas = getSectionsByEdition(editionId).length;
     const raAssigned = editionAssignments.filter(a => a.type === 'Reform Area');
     const hasFullEditionAssigned = editionAssignments.some(a => a.type === 'Edition');
-    
+
     if (hasFullEditionAssigned || (raAssigned.length >= totalReformAreas && totalReformAreas > 0)) {
       const ed = getEditionById(editionId);
       currentAssignments.push({
@@ -1005,27 +1022,27 @@ export function openAssignmentModal(userId, container) {
           </h4>
           <div style="display:flex;flex-direction:column;gap:8px;">
           ${currentAssignments.map(a => {
-            let displayTitle = a.responsibility;
-            if (!displayTitle || displayTitle === 'undefined') {
-              if (a.type === 'Question') {
-                const field = getFieldById(a.questionId || a.fieldId);
-                if (field) {
-                  displayTitle = field.num ? `Q${field.num}: ${field.label || field.text}` : (field.label || field.text);
-                }
-              } else if (a.type === 'Action Point') {
-                displayTitle = a.title || a.actionPointId || 'Action Point Task';
-              } else {
-                const allSections = getSectionsByEdition(a.editionId) || [];
-                const section = allSections.find(s => s.id === (a.sectionId || a.reformAreaId));
-                if (section) {
-                  displayTitle = section.name || section.title;
-                }
-              }
-            }
-            if (!displayTitle || displayTitle === 'undefined') {
-              displayTitle = a.title || a.sectionId || 'Specific Assignment';
-            }
-            return `
+    let displayTitle = a.responsibility;
+    if (!displayTitle || displayTitle === 'undefined') {
+      if (a.type === 'Question') {
+        const field = getFieldById(a.questionId || a.fieldId);
+        if (field) {
+          displayTitle = field.num ? `Q${field.num}: ${field.label || field.text}` : (field.label || field.text);
+        }
+      } else if (a.type === 'Action Point') {
+        displayTitle = a.title || a.actionPointId || 'Action Point Task';
+      } else {
+        const allSections = getSectionsByEdition(a.editionId) || [];
+        const section = allSections.find(s => s.id === (a.sectionId || a.reformAreaId));
+        if (section) {
+          displayTitle = section.name || section.title;
+        }
+      }
+    }
+    if (!displayTitle || displayTitle === 'undefined') {
+      displayTitle = a.title || a.sectionId || 'Specific Assignment';
+    }
+    return `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:8px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                 <div>
                   <strong style="color:var(--text-main);">${displayTitle}</strong>
@@ -1034,7 +1051,7 @@ export function openAssignmentModal(userId, container) {
                 <button class="btn btn-xs btn-danger btn-remove-assign" data-id="${a.id}" ${a.isGrouped ? `data-grouped-ids="${a.groupedIds}"` : ''}>Remove</button>
               </div>
             `;
-          }).join('')}
+  }).join('')}
           </div>
         </div>
       ` : ''}
@@ -1051,7 +1068,7 @@ export function openAssignmentModal(userId, container) {
   const loadSections = (editionId) => {
     const reformAreas = getSectionsByEdition(editionId);
     const listEl = backdrop.querySelector('#assign-sections-list');
-    
+
     if (reformAreas.length === 0) {
       listEl.innerHTML = `
         <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;border: 1px dashed var(--border-color);border-radius: 8px;">
@@ -1066,11 +1083,11 @@ export function openAssignmentModal(userId, container) {
     }
 
     let html = '<div style="display:flex;flex-direction:column;gap:16px;">';
-    
+
     reformAreas.forEach(ra => {
       const title = ra.name || ra.title || 'Unnamed Reform Area';
       const fields = getFieldsBySection(ra.id).filter(f => !f.isLayoutElement);
-      
+
       html += `
         <div class="ra-assign-group" style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-main);box-shadow:0 1px 2px rgba(0,0,0,0.02);">
           <div style="padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:12px;">
@@ -1100,7 +1117,7 @@ export function openAssignmentModal(userId, container) {
               </label>
               <div class="q-assign-group" style="display:flex;flex-direction:column;gap:6px;padding-left:24px;">
         `;
-        
+
         ap.fields.forEach(q => {
           const qLabel = q.num ? `Q${q.num}: ${q.label || q.text}` : (q.label || q.text || 'Unnamed Question');
           html += `
@@ -1110,7 +1127,7 @@ export function openAssignmentModal(userId, container) {
                 </label>
           `;
         });
-        
+
         html += `
               </div>
             </div>
@@ -1122,7 +1139,7 @@ export function openAssignmentModal(userId, container) {
         </div>
       `;
     });
-    
+
     html += '</div>';
     listEl.innerHTML = html;
 
@@ -1140,7 +1157,7 @@ export function openAssignmentModal(userId, container) {
         const checked = e.target.checked;
         const parentGroup = e.target.closest('.ap-assign-group');
         parentGroup.querySelectorAll('.chk-q').forEach(child => child.checked = checked);
-        
+
         const raGroup = e.target.closest('.ra-assign-group');
         const allAps = Array.from(raGroup.querySelectorAll('.chk-ap'));
         raGroup.querySelector('.chk-ra').checked = allAps.length > 0 && allAps.every(c => c.checked);
@@ -1152,7 +1169,7 @@ export function openAssignmentModal(userId, container) {
         const apGroup = e.target.closest('.ap-assign-group');
         const allQs = Array.from(apGroup.querySelectorAll('.chk-q'));
         apGroup.querySelector('.chk-ap').checked = allQs.length > 0 && allQs.every(c => c.checked);
-        
+
         const raGroup = e.target.closest('.ra-assign-group');
         const allAps = Array.from(raGroup.querySelectorAll('.chk-ap'));
         raGroup.querySelector('.chk-ra').checked = allAps.length > 0 && allAps.every(c => c.checked);
@@ -1181,7 +1198,7 @@ export function openAssignmentModal(userId, container) {
 
   backdrop.querySelector('#submit-assign').addEventListener('click', () => {
     const editionId = backdrop.querySelector('#assign-edition').value;
-    
+
     const assignmentsToCreate = [];
     const emptyAssignCheckbox = backdrop.querySelector('#assign-full-edition-empty');
 
@@ -1243,152 +1260,12 @@ export function openAssignmentModal(userId, container) {
     addNotification(userId, NOTIFICATION_EVENTS.SECTION_ASSIGNED,
       `You have been assigned new responsibilities in ${getEditionById(editionId)?.name || 'an edition'}.`);
     addAuditLog(getCurrentUser().id, `Bulk assigned ${createdCount} items to user ${userId}`, 'user', userId);
-    
+
     showToast(`${createdCount} new assignment(s) saved successfully!`, 'success');
     backdrop.remove();
   });
 }
 
-export function openEditUserModal(userId, container) {
-  const user = getUserById(userId);
-  if (!user) return;
-
-  const depts = getDepartments();
-  const orgInDepts = depts.some(d => d.name === user.organization);
-  let extraOption = '';
-  if (user.organization && !orgInDepts) {
-    extraOption = `<option value="${user.organization}" selected>${user.organization}</option>`;
-  }
-  const deptOptionsHtml = extraOption + depts.map(d => 
-    `<option value="${d.name}" ${user.organization === d.name ? 'selected' : ''}>${d.name} (${d.code})</option>`
-  ).join('');
-
-  const isStateUser = user.role === 'user';
-
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop-custom visible';
-  backdrop.style.zIndex = '10000';
-  backdrop.innerHTML = `
-    <div class="modal-card-custom animate-modal-in" style="max-width:540px;text-align:left;max-height:85vh;overflow-y:auto;padding:24px;border-radius:16px;">
-      <h3 class="modal-title-custom" style="text-align:left;margin-bottom:16px;font-family:var(--font-title);font-weight:700;">Edit User Account — ${user.username}</h3>
-      
-      <div class="form-group-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div class="form-group">
-          <label>Name *</label>
-          <input type="text" id="edit-user-fullname" class="form-input" value="${user.name || user.nodalOfficer || ''}" style="width:100%;" required>
-        </div>
-        <div class="form-group">
-          <label>Email Address *</label>
-          <input type="email" id="edit-user-email" class="form-input" value="${user.email || ''}" style="width:100%;" required>
-        </div>
-      </div>
-
-      <div class="form-group-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div class="form-group">
-          <label>Username (Non-editable)</label>
-          <input type="text" class="form-input" value="${user.username}" style="width:100%;background:rgba(255,255,255,0.03);cursor:not-allowed;" readonly disabled>
-        </div>
-        <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end;">
-          <p style="font-size:12px;color:var(--text-muted);margin:0;padding:8px 10px;background:rgba(79,70,229,0.05);border:1px solid rgba(79,70,229,0.15);border-radius:8px;">
-            🔒 Password changes require OTP authentication via the <strong>Change Password</strong> button.
-          </p>
-        </div>
-      </div>
-
-      <div class="form-group-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div class="form-group" style="${isStateUser ? 'grid-column: span 2;' : ''}">
-          <label>Organization / Department</label>
-          <select id="edit-user-org" class="form-input form-select" style="width:100%;height:38px;">
-            <option value="" disabled>Select Department</option>
-            ${deptOptionsHtml || '<option value="" disabled>No departments available.</option>'}
-          </select>
-        </div>
-        ${isStateUser ? `
-        <div class="form-group">
-          <label>State / UT Name *</label>
-          <select id="edit-user-state" required class="form-input form-select" style="width:100%;height:38px;">
-            ${Object.keys(statesDistrictsData).map(s => `<option value="${s}" ${user.state === s || (!user.state && s === 'Andhra Pradesh') ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-        </div>
-        ` : ''}
-      </div>
-
-      ${isStateUser ? `
-      <div class="form-group-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-        <div class="form-group" style="grid-column: span 2;">
-          <label>District *</label>
-          <select id="edit-user-district" required class="form-input form-select" style="width:100%;height:38px;">
-            <option value="" disabled>Select District</option>
-          </select>
-        </div>
-      </div>
-      ` : ''}
-
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px;">
-        <button id="close-edit-user-modal" class="btn btn-secondary">Cancel</button>
-        <button id="submit-edit-user" class="btn btn-primary">Save Changes</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(backdrop);
-
-  const stateSelect = backdrop.querySelector('#edit-user-state');
-  const districtSelect = backdrop.querySelector('#edit-user-district');
-
-  if (isStateUser && stateSelect && districtSelect) {
-    const populateDistricts = (stateVal, selectedDistrict) => {
-      districtSelect.innerHTML = '<option value="" disabled>Select District</option>';
-      const districts = statesDistrictsData[stateVal] || statesDistrictsData["default"] || [];
-      districts.forEach(dist => {
-        const opt = document.createElement('option');
-        opt.value = dist;
-        opt.textContent = dist;
-        if (dist === selectedDistrict) opt.selected = true;
-        districtSelect.appendChild(opt);
-      });
-    };
-
-    if (stateSelect.value) {
-      populateDistricts(stateSelect.value, user.district);
-    }
-
-    stateSelect.addEventListener('change', (e) => {
-      populateDistricts(e.target.value, '');
-    });
-  }
-
-  backdrop.querySelector('#close-edit-user-modal').addEventListener('click', () => backdrop.remove());
-
-  backdrop.querySelector('#submit-edit-user').addEventListener('click', () => {
-    const name = backdrop.querySelector('#edit-user-fullname').value.trim();
-    const email = backdrop.querySelector('#edit-user-email').value.trim();
-    const org = backdrop.querySelector('#edit-user-org').value.trim();
-    
-    let state = '';
-    let district = '';
-    if (isStateUser) {
-      state = backdrop.querySelector('#edit-user-state')?.value || '';
-      district = backdrop.querySelector('#edit-user-district')?.value || '';
-    }
-
-    if (!name || !email) {
-      showToast('Name and email are required.', 'error');
-      return;
-    }
-
-    updateUser(userId, {
-      name, email,
-      organization: org, nodalOfficer: name,
-      state, district, sector: '', startupName: '', category: ''
-    });
-
-    addAuditLog(getCurrentUser().id, `Updated details for user: ${user.username}`, 'user', userId);
-    showToast(`User details updated successfully!`, 'success');
-    backdrop.remove();
-    renderUsersPanel(container);
-  });
-}
 
 export function renderGuidelinesPanel(container) {
   const editions = getEditions();
@@ -1403,7 +1280,7 @@ export function renderGuidelinesPanel(container) {
         <p style="color:var(--text-muted);font-size:14px;">Attach text guidelines, hyperlinks, PDFs, and video references to editions, reform areas, sections, or individual questions.</p></div>
         <div style="display:flex;gap:10px;align-items:center;">
           <select id="guide-edition-sel" class="form-select-sm">
-            ${editions.map(e => `<option value="${e.id}" ${e.id === selEdId ? 'selected':''}>${e.name}</option>`).join('')}
+            ${editions.map(e => `<option value="${e.id}" ${e.id === selEdId ? 'selected' : ''}>${e.name}</option>`).join('')}
           </select>
           <button class="btn btn-primary" id="btn-add-guideline">+ Add Guideline</button>
         </div>
@@ -1424,7 +1301,7 @@ export function renderGuidelinesPanel(container) {
                   <td><strong>${g.title}</strong></td>
                   <td><span class="status-badge status-draft" style="text-transform:capitalize;">${g.type}</span></td>
                   <td>${g.sectionId ? 'Section' : g.reformAreaId ? 'Reform Area' : 'Edition'}</td>
-                  <td>${g.url ? `<a href="${g.url}" target="_blank" style="color:var(--primary);">${g.url.substring(0,40)}...</a>` : g.content.substring(0,60)}</td>
+                  <td>${g.url ? `<a href="${g.url}" target="_blank" style="color:var(--primary);">${g.url.substring(0, 40)}...</a>` : g.content.substring(0, 60)}</td>
                   <td><button class="btn btn-xs btn-danger btn-del-guideline" data-id="${g.id}">Delete</button></td>
                 </tr>
               `).join('')}
@@ -1442,8 +1319,9 @@ export function renderGuidelinesPanel(container) {
 
   container.querySelectorAll('.btn-del-guideline').forEach(btn => {
     btn.addEventListener('click', () => {
-      showConfirm({ title:'Delete Guideline', message:'Delete this guideline?', type:'danger', confirmText:'Delete',
-        onConfirm: () => { deleteGuideline(btn.dataset.id); showToast('Guideline deleted.','success'); renderGuidelinesPanel(container); }
+      showConfirm({
+        title: 'Delete Guideline', message: 'Delete this guideline?', type: 'danger', confirmText: 'Delete',
+        onConfirm: () => { deleteGuideline(btn.dataset.id); showToast('Guideline deleted.', 'success'); renderGuidelinesPanel(container); }
       });
     });
   });
@@ -1489,137 +1367,137 @@ export function openAddGuidelineModal(editionId, container) {
   backdrop.querySelector('#cancel-guide').addEventListener('click', () => backdrop.remove());
   backdrop.querySelector('#submit-guide').addEventListener('click', () => {
     const title = backdrop.querySelector('#guide-title').value.trim();
-    if (!title) { showToast('Title is required.','error'); return; }
+    if (!title) { showToast('Title is required.', 'error'); return; }
     createGuideline({
       editionId, type: backdrop.querySelector('#guide-type').value,
       title, url: backdrop.querySelector('#guide-url').value.trim(),
       content: backdrop.querySelector('#guide-content').value.trim()
     });
-    showToast('Guideline added!','success');
+    showToast('Guideline added!', 'success');
     backdrop.remove();
     renderGuidelinesPanel(container);
   });
 }
 
 export function exportAllSubmissionsExcelFunc() {
-    const db = getDb();
-    const apps = (db.applications || []).filter(a => ['Submitted','Resubmitted','Approved','Rejected','Under Review','Additional Documents Requested'].includes(a.status));
-    const users = db.users || [];
-    const editions = db.editions || [];
-    const answers = db.applicationAnswers || [];
-    const formFields = db.formFields || [];
+  const db = getDb();
+  const apps = (db.applications || []).filter(a => ['Submitted', 'Resubmitted', 'Approved', 'Rejected', 'Under Review', 'Additional Documents Requested'].includes(a.status));
+  const users = db.users || [];
+  const editions = db.editions || [];
+  const answers = db.applicationAnswers || [];
+  const formFields = db.formFields || [];
 
-    const relevantEditionIds = [...new Set(apps.map(a => a.editionId))];
-    const fieldsToInclude = formFields.filter(f => relevantEditionIds.includes(f.editionId));
-    fieldsToInclude.sort((a, b) => {
-        if (a.editionId !== b.editionId) return a.editionId.localeCompare(b.editionId);
-        return (a.orderIndex || 0) - (b.orderIndex || 0);
-    });
+  const relevantEditionIds = [...new Set(apps.map(a => a.editionId))];
+  const fieldsToInclude = formFields.filter(f => relevantEditionIds.includes(f.editionId));
+  fieldsToInclude.sort((a, b) => {
+    if (a.editionId !== b.editionId) return a.editionId.localeCompare(b.editionId);
+    return (a.orderIndex || 0) - (b.orderIndex || 0);
+  });
 
-    const fixedHeaders = ['Application ID','Edition','User Name','Username','Email','Organization','State','District','Status','Submitted At','Last Updated','Score','Num Documents'];
+  const fixedHeaders = ['Application ID', 'Edition', 'User Name', 'Username', 'Email', 'Organization', 'State', 'District', 'Status', 'Submitted At', 'Last Updated', 'Score', 'Num Documents'];
 
-    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
     <head><meta charset="utf-8"></head>
     <body><table border="1"><thead><tr>`;
-    
-    fixedHeaders.forEach(h => { html += `<th style="background-color:#f3f4f6;"><b>${h}</b></th>`; });
-    
+
+  fixedHeaders.forEach(h => { html += `<th style="background-color:#f3f4f6;"><b>${h}</b></th>`; });
+
+  fieldsToInclude.forEach(f => {
+    const editionName = editions.find(e => e.id === f.editionId)?.name || f.editionId;
+    html += `<th style="background-color:#eef2ff;"><b>[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id} (Answer)</b></th>`;
+    html += `<th style="background-color:#eef2ff;"><b>[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id} (Documents)</b></th>`;
+  });
+  html += `<th style="background-color:#fef3c7;"><b>Other Documents (Multi-Upload)</b></th>`;
+  html += `</tr></thead><tbody>`;
+
+  apps.forEach(app => {
+    const user = users.find(u => u.id === app.userId);
+    const edition = editions.find(e => e.id === app.editionId);
+    const appAnswers = answers.filter(a => a.applicationId === app.id);
+    const numDocs = appAnswers.reduce((sum, a) => sum + (a.files?.length || 0), 0);
+
+    html += `<tr>`;
+    const fixedData = [
+      app.id, edition?.name || app.editionId,
+      user?.name || user?.nodalOfficer || '—', user?.username || '—', user?.email || '—',
+      user?.organization || app.organization || '—', user?.state || app.state || '—', user?.district || '—',
+      app.status, app.submittedAt ? new Date(app.submittedAt).toLocaleString('en-IN') : '—',
+      new Date(app.updatedAt).toLocaleString('en-IN'), app.score || 0, numDocs
+    ];
+
+    fixedData.forEach(d => { html += `<td>${d}</td>`; });
+
+    let otherDocumentsHtml = [];
+
     fieldsToInclude.forEach(f => {
-       const editionName = editions.find(e => e.id === f.editionId)?.name || f.editionId;
-       html += `<th style="background-color:#eef2ff;"><b>[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id} (Answer)</b></th>`;
-       html += `<th style="background-color:#eef2ff;"><b>[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id} (Documents)</b></th>`;
+      if (f.editionId !== app.editionId) {
+        html += `<td style="background-color:#f9fafb;">N/A</td><td style="background-color:#f9fafb;">N/A</td>`;
+        return;
+      }
+      const ans = appAnswers.find(a => a.fieldId === f.id);
+      if (!ans) {
+        html += `<td></td><td></td>`;
+        return;
+      }
+
+      // Standard files for this question
+      const standardDocIds = (f.docs || []).map(d => d.id);
+      const standardFiles = (ans.files || []).filter(file => standardDocIds.includes(file.docId));
+
+      // Custom files for this question (goes to Other Documents)
+      const customFiles = (ans.files || []).filter(file => !standardDocIds.includes(file.docId));
+      if (customFiles.length > 0) {
+        customFiles.forEach(file => {
+          const label = file.customLabel || file.name || 'Other Document';
+          if (file.dataUrl) {
+            otherDocumentsHtml.push(`<div><a href="${file.dataUrl}">${label}</a></div>`);
+          } else {
+            otherDocumentsHtml.push(`<div>📄 ${label}</div>`);
+          }
+        });
+      }
+
+      // Answer Value cell
+      html += `<td>${ans.value ? `<div>${ans.value}</div>` : ''}</td>`;
+
+      // Standard Documents cell
+      let standardDocsHtml = [];
+      if (standardFiles.length > 0) {
+        standardFiles.forEach(file => {
+          if (file.dataUrl) {
+            standardDocsHtml.push(`<div><a href="${file.dataUrl}">${file.name || 'View Document'}</a></div>`);
+          } else {
+            standardDocsHtml.push(`<div>📄 ${file.name}</div>`);
+          }
+        });
+      }
+      html += `<td>${standardDocsHtml.join('')}</td>`;
     });
-    html += `<th style="background-color:#fef3c7;"><b>Other Documents (Multi-Upload)</b></th>`;
-    html += `</tr></thead><tbody>`;
 
-    apps.forEach(app => {
-      const user = users.find(u => u.id === app.userId);
-      const edition = editions.find(e => e.id === app.editionId);
-      const appAnswers = answers.filter(a => a.applicationId === app.id);
-      const numDocs = appAnswers.reduce((sum, a) => sum + (a.files?.length || 0), 0);
-      
-      html += `<tr>`;
-      const fixedData = [
-        app.id, edition?.name || app.editionId,
-        user?.name || user?.nodalOfficer || '—', user?.username || '—', user?.email || '—',
-        user?.organization || app.organization || '—', user?.state || app.state || '—', user?.district || '—',
-        app.status, app.submittedAt ? new Date(app.submittedAt).toLocaleString('en-IN') : '—',
-        new Date(app.updatedAt).toLocaleString('en-IN'), app.score || 0, numDocs
-      ];
-      
-      fixedData.forEach(d => { html += `<td>${d}</td>`; });
-      
-      let otherDocumentsHtml = [];
+    // Other Documents column
+    html += `<td>${otherDocumentsHtml.length > 0 ? otherDocumentsHtml.join('') : '<i>None</i>'}</td>`;
 
-      fieldsToInclude.forEach(f => {
-         if (f.editionId !== app.editionId) {
-             html += `<td style="background-color:#f9fafb;">N/A</td><td style="background-color:#f9fafb;">N/A</td>`;
-             return;
-         }
-         const ans = appAnswers.find(a => a.fieldId === f.id);
-         if (!ans) {
-             html += `<td></td><td></td>`;
-             return;
-         }
-         
-         // Standard files for this question
-         const standardDocIds = (f.docs || []).map(d => d.id);
-         const standardFiles = (ans.files || []).filter(file => standardDocIds.includes(file.docId));
-         
-         // Custom files for this question (goes to Other Documents)
-         const customFiles = (ans.files || []).filter(file => !standardDocIds.includes(file.docId));
-         if (customFiles.length > 0) {
-             customFiles.forEach(file => {
-                 const label = file.customLabel || file.name || 'Other Document';
-                 if (file.dataUrl) {
-                     otherDocumentsHtml.push(`<div><a href="${file.dataUrl}">${label}</a></div>`);
-                 } else {
-                     otherDocumentsHtml.push(`<div>📄 ${label}</div>`);
-                 }
-             });
-         }
-         
-         // Answer Value cell
-         html += `<td>${ans.value ? `<div>${ans.value}</div>` : ''}</td>`;
-         
-         // Standard Documents cell
-         let standardDocsHtml = [];
-         if (standardFiles.length > 0) {
-            standardFiles.forEach(file => {
-               if (file.dataUrl) {
-                  standardDocsHtml.push(`<div><a href="${file.dataUrl}">${file.name || 'View Document'}</a></div>`);
-               } else {
-                  standardDocsHtml.push(`<div>📄 ${file.name}</div>`);
-               }
-            });
-         }
-         html += `<td>${standardDocsHtml.join('')}</td>`;
-      });
+    html += `</tr>`;
+  });
 
-      // Other Documents column
-      html += `<td>${otherDocumentsHtml.length > 0 ? otherDocumentsHtml.join('') : '<i>None</i>'}</td>`;
-      
-      html += `</tr>`;
-    });
-    
-    html += `</tbody></table></body></html>`;
+  html += `</tbody></table></body></html>`;
 
-    if (apps.length === 0) { showToast('No submitted applications to export.', 'info'); return; }
+  if (apps.length === 0) { showToast('No submitted applications to export.', 'info'); return; }
 
-    const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; 
-    a.download = `SRF_All_Submissions_${new Date().toISOString().slice(0,10)}.xls`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast(`Exported ${apps.length} submitted applications successfully!`, 'success');
+  const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `SRF_All_Submissions_${new Date().toISOString().slice(0, 10)}.xls`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${apps.length} submitted applications successfully!`, 'success');
 }
 
 export function openExportEditionModal(onConfirm) {
   const editions = getEditions();
   const editionOptions = editions.map(e => `<option value="${e.id}">${e.name} (${e.version})</option>`).join('');
-  
+
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop-custom visible';
   backdrop.style.zIndex = '10001';
@@ -1684,7 +1562,7 @@ export function renderAuditPanel(container) {
   // Application Tracking logic
   const allApps = getDb().applications || [];
   let filteredApps = allApps;
-  
+
   // Exclude applications from soft-deleted editions
   const activeEditions = getEditions().filter(e => !e.isDeleted);
   const activeEditionIds = activeEditions.map(e => e.id);
@@ -1703,21 +1581,21 @@ export function renderAuditPanel(container) {
   const trackRows = filteredApps.map(app => {
     const user = getUserById(app.userId);
     const edition = getEditionById(app.editionId);
-    
+
     const score = calculateApplicationScore(app.id);
     const maxScore = calculateApplicationMaxScore(app.id) || 1;
     const pct = ((score / maxScore) * 100).toFixed(1);
-    
+
     const hasAnyScore = score > 0;
     const hasBeenReviewed = ['Approved', 'Rejected', 'Additional Documents Requested'].includes(app.status) || hasAnyScore;
-    
+
     const scoreDisplay = hasBeenReviewed ? `${score} / ${maxScore}` : '—';
     const pctDisplay = hasBeenReviewed ? `${pct}%` : '—';
-    
+
     const statusCls = _statusClass(app.status);
     const statusLabel = _statusLabel(app.status);
     const updatedDate = new Date(app.updatedAt || app.submittedAt || Date.now()).toLocaleString('en-IN');
-    
+
     return `
       <tr>
         <td><code style="font-size:11px;">${app.id}</code></td>
@@ -1733,7 +1611,7 @@ export function renderAuditPanel(container) {
   }).join('');
 
   const usersList = getUsers() || [];
-  
+
   // User select options
   const stateUsers = usersList.filter(u => u.role === 'user');
   const selectedUserObj = currentAuditFilterUserId ? getUserById(currentAuditFilterUserId) : null;
@@ -1741,12 +1619,12 @@ export function renderAuditPanel(container) {
 
   // Admin select options
   const adminUsers = usersList.filter(u => ['admin', 'reviewer', 'superadmin'].includes(u.role));
-  const adminOptionsHtml = `<option value="">All Admins / Reviewers</option>` + 
+  const adminOptionsHtml = `<option value="">All Admins / Reviewers</option>` +
     adminUsers.map(u => `<option value="${u.id}" ${currentAuditFilterAdminId === u.id ? 'selected' : ''}>${u.name || u.username} (${u.role})</option>`).join('');
 
   // District options
   const districtsList = [...new Set(usersList.filter(u => u.district).map(u => u.district))];
-  const districtOptionsHtml = `<option value="">All Districts</option>` + 
+  const districtOptionsHtml = `<option value="">All Districts</option>` +
     districtsList.map(d => `<option value="${d}" ${currentAuditFilterDistrict === d ? 'selected' : ''}>${d}</option>`).join('');
 
   container.innerHTML = `
@@ -1766,10 +1644,10 @@ export function renderAuditPanel(container) {
               <div id="audit-filter-user-dropdown" class="searchable-select-dropdown hidden">
                 <div class="searchable-select-item ${!currentAuditFilterUserId ? 'selected' : ''}" data-id="" data-label="All State Users">All State Users</div>
                 ${stateUsers.map(u => {
-                  const label = `${u.name || u.nodalOfficer || u.username} (${u.district || 'AP'})`;
-                  const isSelected = currentAuditFilterUserId === u.id;
-                  return `<div class="searchable-select-item ${isSelected ? 'selected' : ''}" data-id="${u.id}" data-label="${label}">${label}</div>`;
-                }).join('')}
+    const label = `${u.name || u.nodalOfficer || u.username} (${u.district || 'AP'})`;
+    const isSelected = currentAuditFilterUserId === u.id;
+    return `<div class="searchable-select-item ${isSelected ? 'selected' : ''}" data-id="${u.id}" data-label="${label}">${label}</div>`;
+  }).join('')}
               </div>
             </div>
             <button class="btn btn-primary" id="btn-search-user" style="height:38px; padding:0 12px; display:flex; align-items:center; justify-content:center; border:none; border-radius:6px; cursor:pointer;" title="Search User">
@@ -1942,7 +1820,7 @@ export function renderAuditPanel(container) {
         renderAuditPanel(container);
       } else {
         // Fallback prefix / text match in stateUsers
-        const matched = stateUsers.find(u => 
+        const matched = stateUsers.find(u =>
           (u.name && u.name.toLowerCase().includes(query)) ||
           (u.nodalOfficer && u.nodalOfficer.toLowerCase().includes(query)) ||
           (u.username && u.username.toLowerCase().includes(query)) ||
@@ -2010,12 +1888,12 @@ export function renderAuditPanel(container) {
 
         const response = await fetch(urlStr, { method: 'GET' });
         if (!response.ok) throw new Error('Failed to download Excel');
-        
+
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `SRF_Export_${editionId || 'All'}_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.download = `SRF_Export_${editionId || 'All'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -2108,12 +1986,12 @@ export function renderSettingsPanel(container) {
 
         const response = await fetch(urlStr, { method: 'GET' });
         if (!response.ok) throw new Error('Failed to download Excel');
-        
+
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `SRF_Export_${editionId || 'All'}_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.download = `SRF_Export_${editionId || 'All'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -2144,7 +2022,7 @@ export function renderSettingsPanel(container) {
       str = str.replace(/"/g, '""');
       return `"${str}"`;
     };
-    
+
     const fixedHeaders = [
       "User Name",
       "Application ID",
@@ -2173,19 +2051,19 @@ export function renderSettingsPanel(container) {
     const relevantEditionIds = [...new Set(apps.map(a => a.editionId))];
     const fieldsToInclude = (db.formFields || []).filter(f => relevantEditionIds.includes(f.editionId));
     fieldsToInclude.sort((a, b) => {
-        if (a.editionId !== b.editionId) return a.editionId.localeCompare(b.editionId);
-        return (a.orderIndex || 0) - (b.orderIndex || 0);
+      if (a.editionId !== b.editionId) return a.editionId.localeCompare(b.editionId);
+      return (a.orderIndex || 0) - (b.orderIndex || 0);
     });
 
     const dynamicHeaders = fieldsToInclude.map(f => {
-       const editionName = editions.find(e => e.id === f.editionId)?.name || f.editionId;
-       return `[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id}`;
+      const editionName = editions.find(e => e.id === f.editionId)?.name || f.editionId;
+      return `[${editionName}] ${f.num ? f.num + ': ' : ''}${f.label || f.text || f.id}`;
     });
-    
+
     const headers = [...fixedHeaders, ...dynamicHeaders];
-    
+
     let csvContent = headers.join(',') + "\n";
-    
+
     apps.forEach(app => {
       const u = users.find(x => x.id === app.userId) || {};
       const ed = editions.find(x => x.id === app.editionId) || {};
@@ -2221,44 +2099,44 @@ export function renderSettingsPanel(container) {
       // 4. Detailed Answers Breakdown (Columns)
       const answers = db.applicationAnswers?.filter(a => a.applicationId === app.id) || [];
       const dynamicRowData = fieldsToInclude.map(f => {
-         if (f.editionId !== app.editionId) {
-             return escapeCSV("N/A");
-         }
-         const ans = answers.find(a => a.fieldId === f.id);
-         if (!ans) return escapeCSV("");
-         
-         let cellContent = [];
-         if (ans.value !== undefined && ans.value !== null && ans.value !== '') {
-            cellContent.push(`Answer: ${ans.value}`);
-         }
-         if (ans.files && ans.files.length > 0) {
-            ans.files.forEach(file => {
-               if (file.docId) {
-                  const docUrl = window.location.origin + `/api/files/${app.id}/${f.id}/${file.docId}`;
-                  cellContent.push(`=HYPERLINK("${docUrl}", "View Document: ${file.name || 'File'}")`);
-               } else {
-                  cellContent.push(`File: ${file.name}`);
-               }
-            });
-         }
-         if (ans.adminRemarks) cellContent.push(`Admin Remarks: ${ans.adminRemarks}`);
-         
-         // If there's a HYPERLINK formula, we can't easily concatenate it with other text in CSV without breaking the formula in Excel.
-         // If there's exactly one hyperlink and no other text, use just the formula.
-         // Otherwise, we just join them with newlines and hope Excel parses it (it usually doesn't parse formulas if there is other text).
-         // To be safe, if we have files, we will try to make the whole cell the HYPERLINK if it's the only thing, or just output text.
-         const hasFormula = cellContent.some(c => c.startsWith('=HYPERLINK'));
-         if (hasFormula && cellContent.length === 1) {
-            return cellContent[0]; // Output raw formula
-         } else if (hasFormula) {
-            // Excel won't execute formulas that are combined with text in the same cell.
-            // But we must output everything. We'll separate by newline and escape.
-            return escapeCSV(cellContent.join('\n'));
-         } else {
-            return escapeCSV(cellContent.join('\n'));
-         }
+        if (f.editionId !== app.editionId) {
+          return escapeCSV("N/A");
+        }
+        const ans = answers.find(a => a.fieldId === f.id);
+        if (!ans) return escapeCSV("");
+
+        let cellContent = [];
+        if (ans.value !== undefined && ans.value !== null && ans.value !== '') {
+          cellContent.push(`Answer: ${ans.value}`);
+        }
+        if (ans.files && ans.files.length > 0) {
+          ans.files.forEach(file => {
+            if (file.docId) {
+              const docUrl = window.location.origin + `/api/files/${app.id}/${f.id}/${file.docId}`;
+              cellContent.push(`=HYPERLINK("${docUrl}", "View Document: ${file.name || 'File'}")`);
+            } else {
+              cellContent.push(`File: ${file.name}`);
+            }
+          });
+        }
+        if (ans.adminRemarks) cellContent.push(`Admin Remarks: ${ans.adminRemarks}`);
+
+        // If there's a HYPERLINK formula, we can't easily concatenate it with other text in CSV without breaking the formula in Excel.
+        // If there's exactly one hyperlink and no other text, use just the formula.
+        // Otherwise, we just join them with newlines and hope Excel parses it (it usually doesn't parse formulas if there is other text).
+        // To be safe, if we have files, we will try to make the whole cell the HYPERLINK if it's the only thing, or just output text.
+        const hasFormula = cellContent.some(c => c.startsWith('=HYPERLINK'));
+        if (hasFormula && cellContent.length === 1) {
+          return cellContent[0]; // Output raw formula
+        } else if (hasFormula) {
+          // Excel won't execute formulas that are combined with text in the same cell.
+          // But we must output everything. We'll separate by newline and escape.
+          return escapeCSV(cellContent.join('\n'));
+        } else {
+          return escapeCSV(cellContent.join('\n'));
+        }
       });
-      
+
       const row = [
         escapeCSV(u.name || ''),
         escapeCSV(app.id),
@@ -2289,10 +2167,10 @@ export function renderSettingsPanel(container) {
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    if (link.download !== undefined) { 
+    if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `srf_applications_export_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute("download", `srf_applications_export_${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -2344,7 +2222,7 @@ export function renderSettingsPanel(container) {
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `srf_users_export_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute('download', `srf_users_export_${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -2390,7 +2268,7 @@ export function renderSettingsPanel(container) {
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `srf_admins_export_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute('download', `srf_admins_export_${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -2404,7 +2282,7 @@ export function renderSettingsPanel(container) {
 
 export function renderDepartmentsPanel(container) {
   const depts = getDepartments();
-  
+
   // Sort departments by date/name
   depts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
@@ -2621,3 +2499,371 @@ export function openEditDepartmentModal(deptId, container) {
   });
 }
 
+export async function renderAdminsPanel(container) {
+  container.innerHTML = `
+    <div class="page-header" style="margin-bottom:24px;">
+      <div>
+        <div class="page-eyebrow" style="color: #ea580c; background: #ffedd5; padding: 4px 12px; border-radius: 6px; display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px;">Security Engine</div>
+        <h1 class="page-title">Manage Admins</h1>
+        <p class="page-subtitle">View and manage all system administrators securely via PostgreSQL API layer.</p>
+      </div>
+      <div style="display:flex;gap:10px; align-items:center;">
+        <button class="btn btn-primary btn-lg" id="btn-create-admin-new">+ Create Admin</button>
+      </div>
+    </div>
+    <div id="admins-loading">
+      <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+        <svg style="animation: spin 1s linear infinite; margin-bottom: 12px;" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" stroke-width="2" stroke-opacity="0.3"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-width="2"></path></svg>
+        <p>Fetching Secure Administrators...</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const admins = await fetchAllAdmins();
+    const rows = admins.map(u => `
+      <tr>
+        <td><code style="font-size:11px;">${String(u.id).substring(0, 8)}...</code></td>
+        <td><strong>${u.name || u.username}</strong><br><small style="color:var(--text-muted)">${u.username}</small></td>
+        <td style="word-break:break-all;">${u.email || '—'}</td>
+        <td><span class="role-badge" style="font-size:11px;background:var(--accent-indigo);color:#fff">${u.role}</span></td>
+        <td>${u.organization || '—'}</td>
+        <td>${u.state || '—'}</td>
+        <td><code style="font-size:11px;">${u.lastIp || 'N/A'}</code></td>
+        <td><span style="font-size:11.5px;color:var(--text-muted)">${u.lastLogin ? new Date(u.lastLogin).toLocaleString() : 'Never'}</span></td>
+        <td>
+          <div class="action-btns" style="flex-wrap:wrap; gap:8px;">
+            ${u.username !== 'superadmin' ? `<button class="btn btn-action-text btn-primary btn-edit-admin" data-id="${u.id}" style="padding:4px 8px;font-size:11px;">✏️ Edit</button><button class="btn btn-action-text btn-danger btn-del-admin" data-id="${u.id}" style="padding:4px 8px;font-size:11px;">🗑️ Delete</button>` : '<span style="font-size:11px;color:var(--success);font-weight:600;">System</span>'}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    container.innerHTML = `
+      <div class="page-header" style="margin-bottom:24px;">
+        <div>
+          <div class="page-eyebrow" style="color: #ea580c; background: #ffedd5; padding: 4px 12px; border-radius: 6px; display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px;">Security Access</div>
+          <h1 class="page-title">Native Administrators</h1>
+          <p class="page-subtitle">Highly privileged Administrative users natively tracked in PostgreSQL cluster.</p>
+        </div>
+        <div style="display:flex;gap:10px; align-items:center;">
+          <button class="btn btn-primary btn-lg" id="btn-create-admin-new">+ Create Admin</button>
+        </div>
+      </div>
+      <div class="card glass-card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <h2>Security Cluster (${admins.length})</h2>
+          <input type="text" id="admin-search" placeholder="Search admins..." class="search-input-sm">
+        </div>
+        <div class="card-body p-0">
+          <div style="overflow-x:auto;">
+            <table class="admin-dashboard-table" style="table-layout:fixed;min-width:1050px;width:100%;">
+              <colgroup>
+                <col style="width:90px">
+                <col style="width:140px">
+                <col style="width:180px">
+                <col style="width:110px">
+                <col style="width:120px">
+                <col style="width:120px">
+                <col style="width:120px">
+                <col style="width:160px">
+                <col style="width:90px">
+              </colgroup>
+              <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Dept</th><th>State</th><th>Last IP</th><th>Last Login</th><th>Actions</th></tr></thead>
+              <tbody id="admins-tbody">${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#btn-create-admin-new')?.addEventListener('click', () => {
+      openCreateAdminModal(container);
+    });
+
+    const tbody = container.querySelector('#admins-tbody');
+    if (tbody) {
+      tbody.addEventListener('click', async (e) => {
+        const editBtn = e.target.closest('.btn-edit-admin');
+        if (editBtn) {
+          const id = editBtn.dataset.id;
+          const targetAdmin = admins.find(a => a.id === id);
+          if (targetAdmin) openEditAdminModal(targetAdmin, container);
+        }
+
+        const delBtn = e.target.closest('.btn-del-admin');
+        if (delBtn) {
+          const id = delBtn.dataset.id;
+          if (confirm('Are you strictly sure you want to permanently delete this Admin Account? This destructive action cannot be undone.')) {
+            try {
+              delBtn.disabled = true;
+              delBtn.textContent = '...';
+              await deleteAdminAPI(id);
+              addAuditLog(getCurrentUser().id, 'Permanently deleted administrative profile', 'admin', id);
+              renderAdminsPanel(container); // Reload grid
+            } catch (err) {
+              showToast(err.message, 'error');
+              delBtn.disabled = false;
+              delBtn.textContent = '🗑️ Delete';
+            }
+          }
+        }
+      });
+    }
+
+  } catch (e) {
+    container.innerHTML += `< div style = "color:var(--danger);padding:40px;text-align:center;" > Failed to load admins: ${e.message}</div > `;
+  }
+}
+
+export function openEditAdminModal(admin, container) {
+  const depts = getDepartments();
+  const deptOptionsHtml = depts.map(d => `<option value="${d.name}">${d.name} (${d.code})</option>`).join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom';
+  backdrop.innerHTML = `
+    <div class="modal-card-custom animate-modal-in" style="max-width: 600px;">
+      <h3 class="modal-title-custom">Update Admin Metadata</h3>
+      <p class="modal-msg-custom">Modify institutional access parameters below.</p>
+      <form id="edit-admin-form" style="text-align: left;" autocomplete="off">
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-admin-state">State / UT</label>
+            <select id="edit-admin-state" class="form-select">
+              <option value="">Select State</option>
+              ${allStates.map(st => `<option value="${st}" ${st === admin.state ? 'selected' : ''}>${st}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-admin-district">District</label>
+            <select id="edit-admin-district" class="form-select">
+              <option value="${admin.district || ''}">${admin.district || 'Select District'}</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-admin-name">Full Name</label>
+            <input type="text" id="edit-admin-name" required value="${admin.name || admin.username}">
+          </div>
+          <div class="form-group">
+            <label for="edit-admin-org">Organization / Department</label>
+            <input type="text" id="edit-admin-org" required class="form-input" list="edit-admin-org-options" value="${admin.organization || ''}">
+            <datalist id="edit-admin-org-options">
+              <option value="Department of Industries & Commerce (IND)">Department of Industries & Commerce (IND)</option>
+              <option value="Department of Information Technology (IT)">Department of Information Technology (IT)</option>
+              <option value="Department of Science & Technology (SNT)">Department of Science & Technology (SNT)</option>
+              <option value="Department of Finance (FIN)">Department of Finance (FIN)</option>
+              <option value="Department of Environment & Forests (ENV)">Department of Environment & Forests (ENV)</option>
+            </datalist>
+          </div>
+        </div>
+        <div class="modal-actions-custom" style="margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" id="cancel-edit-admin">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  const form = backdrop.querySelector('#edit-admin-form');
+  const cancelBtn = backdrop.querySelector('#cancel-edit-admin');
+  const stateSelect = backdrop.querySelector('#edit-admin-state');
+  const districtSelect = backdrop.querySelector('#edit-admin-district');
+
+  stateSelect.addEventListener('change', (e) => {
+    const selectedState = e.target.value;
+    districtSelect.innerHTML = '<option value="">Select District</option>';
+    const districts = statesDistrictsData[selectedState] || statesDistrictsData["default"] || [];
+    districts.forEach(dist => {
+      const opt = document.createElement('option');
+      opt.value = dist;
+      opt.textContent = dist;
+      districtSelect.appendChild(opt);
+    });
+  });
+
+  const close = () => {
+    backdrop.classList.remove('visible');
+    setTimeout(() => backdrop.remove(), 200);
+  };
+
+  cancelBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = backdrop.querySelector('#edit-admin-name').value.trim();
+    const organization = backdrop.querySelector('#edit-admin-org').value;
+    const state = backdrop.querySelector('#edit-admin-state').value || '';
+    const district = backdrop.querySelector('#edit-admin-district').value || '';
+
+    if (!name || !organization) {
+      showToast('Name and Organization are structurally required.', 'error');
+      return;
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    try {
+      await updateAdminAPI(admin.id, { name, organization, state, district });
+      addAuditLog(getCurrentUser().id, 'Updated Admin metadata successfully', 'admin', admin.id);
+      close();
+      renderAdminsPanel(container);
+    } catch (err) {
+      showToast(err.message, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Changes';
+    }
+  });
+}
+
+export function openEditUserModal(user, container) {
+  const depts = getDepartments();
+  const deptOptionsHtml = depts.map(d => `<option value="${d.name}">${d.name} (${d.code})</option>`).join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-custom';
+  backdrop.innerHTML = `
+    <div class="modal-card-custom animate-modal-in" style="max-width: 600px;">
+      <h3 class="modal-title-custom">Update User Record Metadata</h3>
+      <p class="modal-msg-custom">Modify granular access, category, and sector parameters below.</p>
+      <form id="edit-user-form" style="text-align: left;" autocomplete="off">
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-user-state">State / UT</label>
+            <select id="edit-user-state" class="form-select">
+              <option value="">Select State</option>
+              ${allStates.map(st => `<option value="${st}" ${st === user.state ? 'selected' : ''}>${st}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-user-district">District</label>
+            <select id="edit-user-district" class="form-select">
+              <option value="${user.district || ''}">${user.district || 'Select District'}</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-user-name">Full Name</label>
+            <input type="text" id="edit-user-name" required value="${user.name || user.username}">
+          </div>
+          <div class="form-group">
+            <label for="edit-user-org">Organization / Department</label>
+            <input type="text" id="edit-user-org" required class="form-input" list="edit-org-options" value="${user.organization || ''}">
+            <datalist id="edit-org-options">
+              <option value="Department of Industries & Commerce (IND)">Department of Industries & Commerce (IND)</option>
+              <option value="Department of Information Technology (IT)">Department of Information Technology (IT)</option>
+              <option value="Department of Science & Technology (SNT)">Department of Science & Technology (SNT)</option>
+              <option value="Department of Finance (FIN)">Department of Finance (FIN)</option>
+              <option value="Department of Environment & Forests (ENV)">Department of Environment & Forests (ENV)</option>
+              ${deptOptionsHtml}
+            </datalist>
+          </div>
+        </div>
+        <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 16px 0;">
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-user-category">Startup Category</label>
+            <select id="edit-user-category" class="form-select">
+              <option value="">Select Category (Optional)</option>
+              <option value="Technology" ${user.category === 'Technology' ? 'selected' : ''}>Technology</option>
+              <option value="Healthcare" ${user.category === 'Healthcare' ? 'selected' : ''}>Healthcare</option>
+              <option value="Agriculture" ${user.category === 'Agriculture' ? 'selected' : ''}>Agriculture</option>
+              <option value="FinTech" ${user.category === 'FinTech' ? 'selected' : ''}>FinTech</option>
+              <option value="E-Commerce" ${user.category === 'E-Commerce' ? 'selected' : ''}>E-Commerce</option>
+              <option value="Education" ${user.category === 'Education' ? 'selected' : ''}>Education</option>
+              <option value="Other" ${user.category === 'Other' ? 'selected' : ''}>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-user-sector">Sector</label>
+            <select id="edit-user-sector" class="form-select">
+              <option value="">Select Sector (Optional)</option>
+              <option value="Private" ${user.sector === 'Private' ? 'selected' : ''}>Private</option>
+              <option value="Public" ${user.sector === 'Public' ? 'selected' : ''}>Public</option>
+              <option value="Hybrid" ${user.sector === 'Hybrid' ? 'selected' : ''}>Hybrid</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group-row">
+          <div class="form-group">
+            <label for="edit-user-startupname" style="width:100%;">Startup / Company Name</label>
+            <input type="text" id="edit-user-startupname" style="width:100%" placeholder="e.g. TechCorp Innovations (Optional)" value="${user.startupName || ''}">
+          </div>
+        </div>
+        
+        <div class="modal-actions-custom" style="margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" id="cancel-edit-user">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => backdrop.classList.add('visible'));
+
+  const form = backdrop.querySelector('#edit-user-form');
+  const cancelBtn = backdrop.querySelector('#cancel-edit-user');
+  const stateSelect = backdrop.querySelector('#edit-user-state');
+  const districtSelect = backdrop.querySelector('#edit-user-district');
+
+  stateSelect.addEventListener('change', (e) => {
+    const selectedState = e.target.value;
+    districtSelect.innerHTML = '<option value="">Select District</option>';
+    const districts = statesDistrictsData[selectedState] || statesDistrictsData["default"] || [];
+    districts.forEach(dist => {
+      const opt = document.createElement('option');
+      opt.value = dist;
+      opt.textContent = dist;
+      districtSelect.appendChild(opt);
+    });
+  });
+
+  const close = () => {
+    backdrop.classList.remove('visible');
+    setTimeout(() => backdrop.remove(), 200);
+  };
+
+  cancelBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = backdrop.querySelector('#edit-user-name').value.trim();
+    const organization = backdrop.querySelector('#edit-user-org').value;
+    const state = backdrop.querySelector('#edit-user-state').value || '';
+    const district = backdrop.querySelector('#edit-user-district').value || '';
+    const category = backdrop.querySelector('#edit-user-category').value || '';
+    const sector = backdrop.querySelector('#edit-user-sector').value || '';
+    const startupName = backdrop.querySelector('#edit-user-startupname').value.trim();
+
+    if (!name || !organization) {
+      showToast('Name and Organization are structurally required.', 'error');
+      return;
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    try {
+      await updateUserAPI(user.id, { name, organization, state, district, category, sector, startupName });
+      addAuditLog(getCurrentUser().id, 'Updated User metadata natively', 'user', user.id);
+      close();
+      renderUsersPanel(container);
+    } catch (err) {
+      showToast(err.message, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Changes';
+    }
+  });
+}
