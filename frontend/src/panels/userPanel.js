@@ -38,6 +38,7 @@ export function renderUserSidebar() {
     { id: 'dashboard', label: 'My Dashboard', icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>', badge: '' },
     { id: 'assigned-editions', label: 'Assigned Editions', icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', badge: '' },
     { id: 'explore', label: 'Explore Applications', icon: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>', badge: exploreCount > 0 ? String(exploreCount) : '' },
+    { id: 'apply', label: 'Start New Application', icon: '<path d="M12 5v14M5 12h14"/>', badge: '' },
     { id: 'drafts', label: 'Drafts', icon: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"/>', badge: draftCount > 0 ? String(draftCount) : '' },
     { id: 'approved', label: 'Approved', icon: '<circle cx="12" cy="12" r="10"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', badge: '' },
     { id: 'rejected', label: 'Rejected', icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>', badge: '' },
@@ -152,6 +153,7 @@ export function switchUserTab(tab) {
     case 'dashboard': renderUserDashboardEnhanced(mainView); break;
     case 'assigned-editions': renderAssignedEditionsPage(mainView); break;
     case 'explore': renderExploreApplications(mainView); break;
+    case 'apply': renderApplyPage(mainView); break;
     case 'drafts': renderUserAppsFiltered(mainView, 'Draft'); break;
     case 'approved': renderUserAppsFiltered(mainView, 'Approved'); break;
     case 'rejected': renderUserAppsFiltered(mainView, 'Rejected'); break;
@@ -174,7 +176,7 @@ export function renderApplyPage(container) {
     const allSections = getSectionsByEdition(e.id) || [];
     if (allSections.length === 0) return false;
 
-    if (e.status === 'archived') return false;
+    if (e.status !== 'published') return false;
 
     const sections = allSections.filter(sec => isSectionAssignedToUser(sec, user));
     return sections.length > 0;
@@ -604,7 +606,10 @@ export function renderExploreApplications(container) {
   };
 
   const renderContent = () => {
-    const allApps = getApplicationsByUser(user.id);
+    const allApps = getApplicationsByUser(user.id).filter(app => {
+    const ed = getEditionById(app.editionId);
+    return ed && !ed.isDeleted && ed.status === 'published';
+  });
     const filterStatuses = TAB_STATUSES[state.activeTab] || TAB_STATUSES['All'];
     let apps = allApps.filter(a => filterStatuses.includes(a.status));
 

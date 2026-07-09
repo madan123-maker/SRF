@@ -805,12 +805,6 @@ export function updateEdition(id, data) {
           "edition",
           id,
         );
-        addAuditLog(
-          "system",
-          `Published Edition Setup Complete: Edition is now available for task assignment.`,
-          "edition",
-          id,
-        );
       } else {
         addAuditLog(
           currentUserId,
@@ -1723,7 +1717,8 @@ export function addComment(appId, userId, text) {
   updateApplication(appId, { comments: app.comments });
 }
 // Helper to check question assignment
-export function isFieldAssignedToUser(f, userId) {
+export function isFieldAssignedToUser(f, userIdOrObj) {
+  const userId = typeof userIdOrObj === 'object' ? userIdOrObj.id : userIdOrObj;
   const user = (_db.users || []).find((u) => u.id === userId);
   if (!user) return false;
 
@@ -2509,11 +2504,11 @@ export function deleteUser(id) {
 
     _save();
   }
+
 }
 
 // ═══════════════════════════════════════════════════════════════
-// NOTIFICATIONS (with deduplication)
-// ═══════════════════════════════════════════════════════════════
+
 export function getNotifications(userId) {
   return (_db.notifications || [])
     .filter((n) => n.userId === userId && !n.isDismissed)

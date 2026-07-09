@@ -378,12 +378,15 @@ export function renderUserDashboardEnhanced(container) {
     return;
   }
 
-  const apps = Store.getApplicationsByUser(user.id);
+  const apps = Store.getApplicationsByUser(user.id).filter(app => {
+    const ed = Store.getEditionById(app.editionId);
+    return ed && !ed.isDeleted && ed.status === 'published';
+  });
   const unread = Store.getUnreadCount(user.id);
   const rawUserAssignments = Store.getAssignments ? Store.getAssignments(user.id) : [];
   const userAssignments = rawUserAssignments.filter(a => {
     const ed = Store.getEditionById(a.editionId);
-    return ed && !ed.isDeleted && ed.status !== 'archived';
+    return ed && !ed.isDeleted && ed.status === 'published';
   });
 
   const uniqueAssignedEditionIds = [...new Set(userAssignments.map(a => a.editionId))];
@@ -679,7 +682,7 @@ export function renderUserDashboardEnhanced(container) {
     quickActions.push({ label: '📎 Upload Requested Docs', id: docsReqApps[0].id, type: 'workspace' });
   }
   if (totalAssigned > 0) {
-    quickActions.push({ label: '🚀 Start New Framework', type: 'explore' });
+    quickActions.push({ label: '🚀 Start New Framework', type: 'apply' });
   }
   if (unread > 0) {
     quickActions.push({ label: '🔔 View Unread Alerts', type: 'notifications' });
@@ -854,6 +857,10 @@ export function renderUserDashboardEnhanced(container) {
         window.openApplicationForm(id, container);
       } else if (type === 'workspace') {
         renderTabbedApplicationWorkspace(container, id);
+      } else if (type === 'apply') {
+        uiState.activeUserTab = 'apply';
+        updateSidebarActiveUser('apply');
+        window.switchUserTab('apply');
       } else if (type === 'explore') {
         uiState.activeUserTab = 'explore';
         window.renderUserSidebar();

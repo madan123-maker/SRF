@@ -14,6 +14,9 @@ import { dataURLtoObjectURL } from '../ui/fileUtil.js';
 let _activeEditionId = null;
 let _activeWorkspaceTab = 'applications';
 let _activeReformAreaId = null;
+let _activeActionPointId = null;
+let _activeQuestionId = null;
+let _expandedApGroups = new Set();
 let _onBackToEditions = null;
 let _workspaceContainer = null;
 
@@ -159,60 +162,51 @@ export function renderEditionWorkspace(container, editionId, onBack) {
   const edition = Store.getEditionById(editionId);
   if (!edition) return;
 
+  const isPublished = edition.status === 'published';
+  const tabs = [
+    { key: 'applications', label: 'Applications', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' },
+    { key: 'schema',       label: 'Schema Editor', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+  ];
+
   container.innerHTML = `
-    <div class="workspace-header">
-      <button class="btn btn-secondary btn-sm" id="ws-back-btn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        All Editions
-      </button>
-      <div class="ws-breadcrumb">
-        <span>Admin</span><span class="bc-sep">/</span>
-        <span class="bc-active">${edition.name}</span>
-      </div>
-      <div class="ws-edition-badge ${edition.status === 'published' ? 'badge-published' : 'badge-draft'}">
-        ${edition.status === 'published' ? '● Published' : '○ Draft'}
-      </div>
-    </div>
+    <div class="ws-workspace workspace-panel">
 
-    <div class="ws-tabs" id="ws-tabs">
-      <button class="ws-tab active" data-tab="applications">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-        Applications
-      </button>
-      <button class="ws-tab" data-tab="reformareas">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Reform Areas
-      </button>
-      <button class="ws-tab" data-tab="schema">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        Schema Builder
-      </button>
-      <button class="ws-tab" data-tab="queue">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Review Queue
-      </button>
-      <button class="ws-tab" data-tab="scores">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Scores
-      </button>
-      <button class="ws-tab" data-tab="reports">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21H3"/><path d="M3 3v18"/><rect x="7" y="14" width="3" height="7"/><rect x="13" y="10" width="3" height="11"/><rect x="19" y="6" width="3" height="15"/></svg>
-        Reports
-      </button>
-      <button class="ws-tab" data-tab="mappings">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Mappings
-      </button>
-    </div>
+      <!-- Page Header -->
+      <div class="section-card" style="margin-bottom:24px;">
+        <div style="float:right; display:flex; gap:8px; margin-top:4px; align-items:center;">
+          <span class="edition-status-pill ${isPublished ? 'pill-published' : 'pill-draft'}" style="margin-right:12px;">
+            ${isPublished ? '● Published' : '○ Draft'}
+          </span>
+          <button class="btn btn-secondary btn-sm ws-back-btn" id="ws-back-btn" style="display:flex;align-items:center;gap:5px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            All Editions
+          </button>
+        </div>
+        <div class="section-badge admin-badge" style="text-transform:uppercase;">EDITION WORKSPACE</div>
+        <h1 style="margin-bottom:4px;">${edition.name} Workspace</h1>
+        <p style="color:var(--text-muted);font-size:14px; margin-top:0;">${edition.description || 'Manage edition applications, schemas, and configurations'}</p>
+      </div>
 
-    <div id="ws-content"></div>
+      <!-- Tab Navigation -->
+      <div class="workspace-tabs" id="ws-tabs" style="display:flex; gap:20px; margin-bottom:24px; border-bottom:1px solid var(--border-color); padding-bottom:0px; overflow-x:auto;">
+        ${tabs.map((t, i) => `
+          <button class="tab-btn ws-tab-btn ${i === 0 ? 'active' : ''}" data-tab="${t.key}" style="display:flex; align-items:center; gap:8px; background:transparent; border:none; border-bottom:2px solid transparent; cursor:pointer; outline:none; white-space:nowrap; padding:10px 16px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${t.icon}</svg>
+            ${t.label}
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- Tab Content -->
+      <div id="ws-content" class="ws-tab-content"></div>
+    </div>
   `;
 
   document.getElementById('ws-back-btn').addEventListener('click', () => { if (onBack) onBack(); });
 
-  document.querySelectorAll('.ws-tab').forEach(tab => {
+  container.querySelectorAll('.ws-tab-btn').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.ws-tab').forEach(t => t.classList.remove('active'));
+      container.querySelectorAll('.ws-tab-btn').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       _activeWorkspaceTab = tab.dataset.tab;
       _renderWorkspaceTab(editionId);
@@ -227,14 +221,25 @@ function _renderWorkspaceTab(editionId) {
   if (!content) return;
   content.innerHTML = '<div class="ws-loading"><div class="spinner"></div></div>';
   setTimeout(() => {
-    switch (_activeWorkspaceTab) {
-      case 'applications': renderApplicationsTab(content, editionId); break;
-      case 'reformareas': renderReformAreasTab(content, editionId); break;
-      case 'schema': renderSchemaBuilderTab(content, editionId); break;
-      case 'queue': renderQuestionQueueTab(content, editionId); break;
-      case 'scores': renderScoresTab(content, editionId); break;
-      case 'reports': renderReportsTab(content, editionId); break;
-      case 'mappings': renderMappingsTab(content, editionId); break;
+    content.innerHTML = '';
+    if (_activeWorkspaceTab === 'applications') {
+      content.innerHTML = `
+        <div id="sub-app-list" style="margin-bottom: 24px;"></div>
+        <div id="sub-app-queue" style="margin-bottom: 24px;"></div>
+        <div id="sub-app-scores" style="margin-bottom: 24px;"></div>
+        <div id="sub-app-reports"></div>
+      `;
+      renderApplicationsTab(content.querySelector('#sub-app-list'), editionId);
+      renderQuestionQueueTab(content.querySelector('#sub-app-queue'), editionId);
+      renderScoresTab(content.querySelector('#sub-app-scores'), editionId);
+      renderReportsTab(content.querySelector('#sub-app-reports'), editionId);
+    } else if (_activeWorkspaceTab === 'schema') {
+      content.innerHTML = `
+        <div id="sub-schema-builder" style="margin-bottom: 24px;"></div>
+        <div id="sub-schema-mappings"></div>
+      `;
+      renderSchemaBuilderTab(content.querySelector('#sub-schema-builder'), editionId);
+      renderMappingsTab(content.querySelector('#sub-schema-mappings'), editionId);
     }
   }, 50);
 }
@@ -284,14 +289,32 @@ export function renderApplicationsTab(container, editionId) {
       `;
     }).join('');
 
+    const stats = Store.getEditionStats(editionId);
+    const kpi = (label, val, color, valKey) => `
+      <div class="stat-card" style="cursor:pointer;" onclick="const select = document.querySelector('#app-filter-status'); if(select) { select.value='${valKey}'; select.dispatchEvent(new Event('change')); }">
+        <div class="stat-info">
+          <h3 style="color:${color}">${val}</h3>
+          <p style="font-size:13px;color:var(--text-muted)">${label}</p>
+        </div>
+      </div>
+    `;
+
     container.innerHTML = `
-      <div class="tab-section">
-        <div class="tab-section-header">
-          <h2>Applications <span class="count-chip">${result.total}</span></h2>
-          <div class="filter-row">
-            <input type="text" id="app-search" placeholder="Search applicant, ID…" class="search-input-sm">
+      <div class="stats-grid" style="margin-bottom:24px;">
+        ${kpi('Total Applications', stats.total, '#4f46e5', '')}
+        ${kpi('Pending Review', stats.submitted + stats.underReview, '#d97706', 'Submitted')}
+        ${kpi('Approved', stats.approved, '#10b981', 'Approved')}
+        ${kpi('Rejected', stats.rejected, '#ef4444', 'Rejected')}
+        ${kpi('Additional Docs', stats.additionalDocs, '#0284c7', 'Additional Documents Requested')}
+      </div>
+
+      <div class="card glass-card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <h2 style="display:flex;align-items:center;gap:8px;">Applications <span class="count-chip" style="background:var(--primary-glow);color:var(--primary);border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;">${result.total}</span></h2>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="app-search" placeholder="Search applicant / ID..." class="search-input-sm" style="min-width:200px;">
             <select id="app-filter-status" class="form-select-sm">
-              <option value="">All Status</option>
+              <option value="">All Statuses</option>
               <option value="Submitted">Submitted</option>
               <option value="Approved">Approved</option>
               <option value="Rejected">Rejected</option>
@@ -304,10 +327,12 @@ export function renderApplicationsTab(container, editionId) {
           </div>
         </div>
         ${result.items.length === 0 ? `
-          <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <h3>No Applications Yet</h3>
-            <p>Applications submitted by users will appear here.</p>
+          <div class="empty-state" style="padding:60px 20px; text-align:center;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border-color)" stroke-width="1.5" style="margin:0 auto 16px;">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+            </svg>
+            <h3 style="font-size:16px; margin-bottom:4px;">No applications found</h3>
+            <p style="font-size:14px; color:var(--text-muted); margin:0;">No applications match the current filters.</p>
           </div>
         ` : `
           <div class="table-wrapper">
@@ -971,7 +996,7 @@ function _openReformAreaModal(editionId, editId, parentContainer) {
     Store.saveSchemaVersion(editionId, getCurrentUser().id, `${existing ? 'Updated' : 'Added'} reform area: ${name}`);
     showToast(`Reform Area ${existing ? 'updated' : 'created'}!`, 'success');
     backdrop.remove();
-    renderReformAreasTab(parentContainer, editionId);
+    renderSchemaBuilderTab(container, editionId); // Using the new function
   });
 }
 
@@ -984,82 +1009,237 @@ function renderSchemaBuilderTab(container, editionId) {
     _activeReformAreaId = reformAreas[0]?.id || null;
   }
 
-  const leftNav = reformAreas.map(ra => `
-    <div class="schema-nav-item ${ra.id === _activeReformAreaId ? 'active' : ''}" draggable="true" data-raid="${ra.id}" style="${ra.id === _activeReformAreaId ? `border-left:3px solid ${ra.color};background:${ra.color}12` : ''}" title="${ra.name}">
-      <div class="schema-nav-dot" style="background:${ra.color}"></div>
-      <span>${ra.name}</span>
-      <span class="schema-nav-count">${Store.getFieldsByReformArea(ra.id).length}</span>
+  // --- LEFT COLUMN: Reform Areas ---
+  const leftNav = reformAreas.map((ra, idx) => `
+    <div class="ra-card schema-nav-item ${ra.id === _activeReformAreaId ? 'active' : ''}" draggable="true" data-raid="${ra.id}" style="background:var(--bg-card); cursor:pointer; margin-bottom:12px; border-radius:8px; border:1px solid ${ra.id === _activeReformAreaId ? 'var(--primary)' : 'var(--border-color)'}; padding:12px; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;">
+      <div style="display:flex; flex-direction:column; overflow:hidden;">
+        <span style="font-size:11px; color:var(--primary); font-weight:600; margin-bottom:2px;">Reform Area ${idx + 1}</span>
+        <strong style="font-size:13px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ra.name}</strong>
+      </div>
+      <div style="display:flex; gap:6px; margin-left:8px;">
+        <button class="btn btn-xs btn-outline btn-edit-ra" data-id="${ra.id}" style="padding:4px; border-radius:4px; border-color:var(--border-color); color:var(--text-muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button class="btn btn-xs btn-outline btn-delete-ra" data-id="${ra.id}" data-name="${ra.name}" style="padding:4px; border-radius:4px; border-color:var(--border-color); color:#ef4444;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
     </div>
   `).join('');
 
-  const toolboxCategories = [
-    { id: 'layout', label: 'Layout & Content' },
-    { id: 'input', label: 'Input Fields' },
-    { id: 'choice', label: 'Choice Fields' },
-    { id: 'upload', label: 'File Uploads' },
-    { id: 'media', label: 'Media & Links' },
-    { id: 'advanced', label: 'Advanced' },
-  ];
+  // --- MIDDLE COLUMN: Action Point Groups & Questions ---
+  const allFields = _activeReformAreaId ? Store.getFieldsByReformArea(_activeReformAreaId) : [];
+  
+  // Build Virtual Hierarchy without saving to store (unless edited)
+  const apGroupsMap = {}; // { apId: { id, title, questions: { qId: { id, title, maxScore, ... } } } }
+  
+  allFields.forEach(f => {
+    // Determine Virtual Action Point Group
+    const apId = f.actionPointId || 'ap_legacy_' + f.id;
+    const apTitle = f.actionPointTitle || 'Default Action Point Group';
+    
+    // Determine Virtual Question
+    const qId = f.questionId || 'q_legacy_' + f.id; // Map legacy field to a virtual Question
+    
+    if (!apGroupsMap[apId]) {
+      apGroupsMap[apId] = {
+        id: apId,
+        title: apTitle,
+        questions: {},
+        isLegacy: !f.actionPointId
+      };
+    }
+    
+    if (!apGroupsMap[apId].questions[qId]) {
+      apGroupsMap[apId].questions[qId] = {
+        id: qId,
+        title: f.label || 'Question', // Fallback title
+        description: f.description || f.content || '',
+        helpText: f.helpText || '',
+        maxScore: f.maxScore || 1,
+        weight: f.weight || 1,
+        guidelinePage: f.guidelinePage || '',
+        scoringCriteria: f.scoringCriteria || '',
+        validationRules: f.validationRules || '',
+        mandatory: f.mandatory || false,
+        required: f.required || false,
+        apId: apId // Keep reference to parent
+      };
+    }
+  });
 
-  const toolboxHtml = toolboxCategories.map(cat => {
-    const elements = TOOLBOX_ELEMENTS.filter(e => e.category === cat.id);
-    if (!elements.length) return '';
+  const apGroups = Object.values(apGroupsMap);
+
+  // Auto-select first question if none active
+  if (apGroups.length > 0 && !_activeQuestionId) {
+    const firstGroup = apGroups[0];
+    const qs = Object.values(firstGroup.questions);
+    if (qs.length > 0) {
+      _activeQuestionId = qs[0].id;
+      _expandedApGroups.add(firstGroup.id);
+    }
+  }
+
+  let activeQuestion = null;
+
+  const centerNav = apGroups.map(ap => {
+    const isExpanded = _expandedApGroups.has(ap.id);
+    const questions = Object.values(ap.questions);
+    
+    // Find if activeQuestion is in this group
+    questions.forEach(q => {
+      if (q.id === _activeQuestionId) activeQuestion = q;
+    });
+
     return `
-      <div class="toolbox-category">
-        <div class="toolbox-cat-label">${cat.label}</div>
-        <div class="toolbox-buttons">
-          ${elements.map(el => `
-            <button class="toolbox-btn" data-type="${el.id}" title="${el.label}" style="--el-color:${el.color}">
-              <span class="toolbox-icon">${el.icon}</span>
-              <span class="toolbox-label">${el.label}</span>
-            </button>
-          `).join('')}
+      <div class="ap-group" style="margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+        <div class="ap-group-header" data-apid="${ap.id}" style="padding:12px 16px; background:var(--bg-card); cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:13px; font-weight:700; color:var(--text-main);">${ap.title}</span>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-xs btn-outline" style="padding:4px; border-radius:4px; border-color:var(--border-color); color:var(--text-muted); transition:transform 0.2s; transform:${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+            <button class="btn btn-xs btn-outline btn-delete-ap-group" data-apid="${ap.id}" style="padding:4px; border-radius:4px; border-color:var(--border-color); color:#ef4444;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
         </div>
+        
+        ${isExpanded ? `
+          <div class="ap-group-body" style="padding:0 16px 16px;">
+            ${questions.length === 0 ? '<div style="font-size:11px; color:var(--text-muted); text-align:center; padding:8px;">No questions.</div>' : ''}
+            ${questions.map(q => {
+              const isActive = q.id === _activeQuestionId;
+              return `
+                <div class="q-item ${isActive ? 'active' : ''}" data-qid="${q.id}" data-apid="${ap.id}" style="padding:10px 12px; margin-bottom:8px; border-radius:6px; cursor:pointer; background:${isActive ? 'var(--primary-glow)' : '#f8fafc'}; border:1px solid ${isActive ? 'var(--primary)' : 'var(--border-color)'}; display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:12px; font-weight:500; color:${isActive ? 'var(--primary)' : 'var(--text-main)'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:12px;">${q.title}</span>
+                  <span style="font-size:11px; color:var(--primary); font-weight:700;">[${q.maxScore || 1}M]</span>
+                </div>
+              `;
+            }).join('')}
+            <div style="text-align:right; margin-top:8px;">
+              <button class="btn btn-xs btn-add-q" data-apid="${ap.id}" style="background:transparent; border:none; color:var(--primary); font-size:11px; font-weight:600; padding:4px 8px; cursor:pointer;">+ Add Question</button>
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
 
-  container.innerHTML = `
-    <div class="schema-builder-layout">
-
-      <!-- LEFT: Reform Area Navigation -->
-      <div class="schema-left-panel">
-        <div class="schema-panel-header">
-          <h3>Reform Areas</h3>
-          <button class="btn btn-xs btn-primary" id="btn-schema-add-ra">+</button>
+  // --- RIGHT COLUMN: Toolbox & Editor ---
+  // Create a single grid for all toolbox elements
+  const toolboxHtml = `
+    <div class="toolbox-buttons" style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+      ${TOOLBOX_ELEMENTS.map(el => `
+        <div class="toolbox-item" draggable="true" data-type="${el.id}" title="Drag to canvas or click to add" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:4px; padding:6px 10px; font-size:11px; font-weight:500; text-align:left; color:#1e293b; cursor:grab; transition:all 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.01);">
+          ${el.label}
         </div>
-        <div class="schema-nav-list" id="schema-nav-list">
-          ${leftNav || '<p class="schema-empty-nav">No reform areas yet.<br>Click + to add.</p>'}
-        </div>
-        <div style="padding:12px;border-top:1px solid var(--border-color);">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Schema Versions</div>
-          <button class="btn btn-xs btn-outline btn-full" id="btn-save-schema-version">💾 Save Version</button>
-          <button class="btn btn-xs btn-outline btn-full" style="margin-top:6px;" id="btn-view-versions">🕐 History</button>
-          <button class="btn btn-xs btn-outline btn-full" style="margin-top:6px;" id="btn-export-schema">📥 Export</button>
-        </div>
-      </div>
-
-      <!-- CENTER: Form Canvas -->
-      <div class="schema-canvas" id="schema-canvas">
-        ${_activeReformAreaId ? _renderFormCanvas(editionId, _activeReformAreaId) : '<div class="canvas-empty"><p>Select or create a Reform Area to start building.</p></div>'}
-      </div>
-
-      <!-- RIGHT: Toolbox -->
-      <div class="schema-toolbox" id="schema-toolbox">
-        <div class="schema-panel-header">
-          <h3>🧰 Toolbox</h3>
-        </div>
-        <div class="toolbox-scroll">${toolboxHtml}</div>
-      </div>
-
+      `).join('')}
     </div>
   `;
 
-  // Reform area nav clicks and drag-and-drop
+  container.innerHTML = `
+    <!-- Top Header Card -->
+    <div style="margin-bottom:24px; padding:0 24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="margin:0; font-size:20px; font-weight:700; color:var(--text-main);">SRF Platform</h2>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <button class="btn btn-secondary" id="btn-schema-reset" style="background:var(--bg-card); border-radius:20px; font-size:12px; padding:6px 16px;">Reset to Default</button>
+          <button class="btn btn-primary" id="btn-save-schema-version" style="border-radius:20px; font-size:12px; padding:6px 16px;">Save Framework Schema</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3-Column Workspace -->
+    <div class="schema-builder-layout" style="display:grid; grid-template-columns: 260px 320px 1fr; gap:24px; height:auto; min-height:600px; background:var(--bg-workspace); padding:24px; border-radius:12px;">
+      
+      <!-- COLUMN 1: Reform Areas -->
+      <div class="schema-left-panel" style="display:flex; flex-direction:column;">
+        <div class="schema-panel-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="margin:0; font-size:14px; font-weight:700;">Reform Areas</h3>
+          <button class="btn btn-xs btn-primary" id="btn-schema-add-ra" style="border-radius:16px; padding:4px 12px; font-size:11px; font-weight:600;">+ Add Area</button>
+        </div>
+        <div class="schema-nav-list" id="schema-nav-list" style="overflow-y:auto; flex:1; padding-right:4px;">
+          ${leftNav || '<p class="schema-empty-nav" style="text-align:center; padding:20px; color:var(--text-muted);">No reform areas yet.<br>Click + to add.</p>'}
+        </div>
+      </div>
+
+      <!-- COLUMN 2: Action Point Groups & Questions -->
+      <div class="schema-center-panel" style="display:flex; flex-direction:column;">
+        <div class="schema-panel-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="margin:0; font-size:14px; font-weight:700;">Area Rules & Settings</h3>
+          <button class="btn btn-xs btn-outline" style="border-radius:16px; padding:4px 12px; font-size:11px; font-weight:600;">Rules/Assignments</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h4 style="margin:0; font-size:13px; font-weight:700;">Action Points</h4>
+          <button class="btn btn-xs btn-primary" id="btn-add-ap-group" style="background:var(--accent-indigo); border:none; border-radius:16px; padding:4px 12px; font-size:11px; font-weight:600;">+ Add Action Point</button>
+        </div>
+        <div class="ap-list" style="overflow-y:auto; flex:1; padding-right:4px;">
+          ${centerNav || '<p style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px;">No action points yet.<br>Click + to add.</p>'}
+        </div>
+      </div>
+
+      <!-- COLUMN 3: Question Editor -->
+      <div class="schema-right-panel" style="display:flex; flex-direction:column;">
+        
+        <div style="overflow-y:auto; flex:1; padding-right:4px;">
+          ${!activeQuestion ? '<div style="text-align:center; padding:40px; color:var(--text-muted); background:var(--bg-card); border-radius:8px;">Select or add a Question to edit details.</div>' : `
+            
+            <div style="display:flex; gap:20px; margin-bottom:16px;">
+              <div style="flex:1;">
+                <label class="form-label" style="font-size:11px; font-weight:600; color:var(--text-main); margin-bottom:4px;">Mandatory Guidelines Page Reference</label>
+                <input type="text" class="form-input cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="guidelinePage" value="${(activeQuestion.guidelinePage || '').replace(/"/g, '&quot;')}" placeholder="e.g. 1" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:6px; font-size:13px; padding:8px 12px;">
+              </div>
+              <div style="flex:2;">
+                <label class="form-label" style="font-size:11px; font-weight:600; color:var(--text-main); margin-bottom:4px;">Scoring Criteria / Rules Description</label>
+                <input type="text" class="form-input cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="scoringCriteria" value="${(activeQuestion.scoringCriteria || '').replace(/"/g, '&quot;')}" placeholder="e.g. Absolute Score: 1 for Yes, 0 for No" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:6px; font-size:13px; padding:8px 12px;">
+              </div>
+            </div>
+
+            <!-- Hidden but functionally preserved fields to ensure no logic breaks -->
+            <div style="display:none;">
+               <input type="text" class="cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="label" value="${(activeQuestion.title || '').replace(/"/g, '&quot;')}">
+               <input type="number" class="cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="maxScore" value="${activeQuestion.maxScore || 1}">
+               <input type="text" class="cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="description" value="${(activeQuestion.description || '').replace(/"/g, '&quot;')}">
+               <input type="text" class="cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="helpText" value="${(activeQuestion.helpText || '').replace(/"/g, '&quot;')}">
+               <input type="text" class="cfc-q-prop-input" data-qid="${activeQuestion.id}" data-prop="validationRules" value="${(activeQuestion.validationRules || '').replace(/"/g, '&quot;')}">
+            </div>
+
+            <div style="margin-bottom:24px;">
+              <h4 style="font-size:13px; color:var(--primary); margin:0 0 4px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Dynamic Form Fields Builder
+              </h4>
+              <p style="font-size:11px; color:var(--text-muted); margin:0 0 12px;">Drag elements from the Toolbox below and drop them here to build a multi-input question dynamically.</p>
+              
+              <div class="schema-canvas" id="schema-canvas" style="background:var(--bg-card); border:1px solid var(--border-color); padding:16px; border-radius:8px; min-height:120px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                ${_renderFormCanvas(editionId, _activeReformAreaId, activeQuestion.id)}
+              </div>
+              
+              <div style="display:flex; gap:12px; margin-top:16px;">
+                <button class="btn btn-outline btn-full" style="flex:1; border-radius:8px; border-color:var(--border-color); color:var(--text-main); font-size:12px; font-weight:600;">Duplicate</button>
+                <button class="btn btn-full btn-delete-q" data-qid="${activeQuestion.id}" style="flex:1; border-radius:8px; border:1px solid #fca5a5; color:#ef4444; background:transparent; font-size:12px; font-weight:600;">Delete Question</button>
+              </div>
+            </div>
+
+            <div class="schema-toolbox" id="schema-toolbox" style="background:#f1f5f9; padding:12px; border-radius:8px; margin-top:16px;">
+              <h4 style="font-size:12px; font-weight:700; margin:0 0 12px; display:flex; align-items:center; gap:6px; color:#1e293b;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                Form Element Toolbox
+              </h4>
+              <div class="toolbox-scroll" style="background:transparent; padding:0; border:none;">
+                ${toolboxHtml}
+              </div>
+            </div>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // --- EVENT LISTENERS ---
+
+  // 1. Reform Area Navigation & Editing
   let draggedRaId = null;
   container.querySelectorAll('.schema-nav-item').forEach(item => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-edit-ra') || e.target.closest('.btn-delete-ra')) return;
       _activeReformAreaId = item.dataset.raid;
+      _activeQuestionId = null;
       renderSchemaBuilderTab(container, editionId);
     });
 
@@ -1068,15 +1248,8 @@ function renderSchemaBuilderTab(container, editionId) {
       e.dataTransfer.effectAllowed = 'move';
       item.style.opacity = '0.5';
     });
-
-    item.addEventListener('dragend', () => {
-      item.style.opacity = '1';
-    });
-
-    item.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    });
-
+    item.addEventListener('dragend', () => item.style.opacity = '1');
+    item.addEventListener('dragover', (e) => e.preventDefault());
     item.addEventListener('drop', (e) => {
       e.preventDefault();
       const targetRaId = item.dataset.raid;
@@ -1087,17 +1260,15 @@ function renderSchemaBuilderTab(container, editionId) {
         orderedIds.splice(draggedIdx, 1);
         orderedIds.splice(targetIdx, 0, draggedRaId);
         Store.reorderReformAreas(editionId, orderedIds);
-        Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Reordered Reform Areas');
         renderSchemaBuilderTab(container, editionId);
         showToast('Reform Areas reordered!', 'success');
       }
     });
   });
 
-  // Add reform area
-  container.querySelector('#btn-schema-add-ra')?.addEventListener('click', () => {
+  // Add RA
+  const openAddRA = () => {
     _openReformAreaModal(editionId, null, container);
-    // After modal closes, re-render schema builder
     const observer = new MutationObserver(() => {
       if (!document.querySelector('.modal-backdrop-custom')) {
         observer.disconnect();
@@ -1105,37 +1276,171 @@ function renderSchemaBuilderTab(container, editionId) {
       }
     });
     observer.observe(document.body, { childList: true });
-  });
+  };
+  container.querySelector('#btn-schema-add-ra')?.addEventListener('click', openAddRA);
 
-  // Toolbox button clicks
-  container.querySelectorAll('.toolbox-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!_activeReformAreaId) { showToast('Select a Reform Area first.', 'error'); return; }
-      const fieldType = btn.dataset.type;
-      const el = TOOLBOX_ELEMENTS.find(e => e.id === fieldType);
-      const newField = Store.createField(editionId, _activeReformAreaId, {
-        fieldType,
-        label: el?.label || fieldType,
-        text: el?.label || fieldType,
-        required: !['heading', 'subheading', 'description', 'instruction', 'divider', 'card', 'banner', 'notes', 'warning', 'image', 'hyperlink'].includes(fieldType),
-        mandatory: false,
-        weight: 1, maxScore: 1
+  // Edit / Delete RA
+  container.querySelectorAll('.btn-edit-ra').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _openReformAreaModal(editionId, btn.dataset.id, container);
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('.modal-backdrop-custom')) {
+          observer.disconnect();
+          renderSchemaBuilderTab(container, editionId);
+        }
       });
-      Store.addAuditLog(getCurrentUser().id, `Added ${el?.label} to schema`, 'schema', editionId);
-      // Auto-save schema version after toolbox insert
-      Store.saveSchemaVersion(editionId, getCurrentUser().id, `Added ${el?.label}`);
-      // Re-render canvas only
-      const canvas = container.querySelector('#schema-canvas');
-      if (canvas) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId);
-      _attachCanvasListeners(container, editionId);
-      showToast(`${el?.label} added!`, 'success');
+      observer.observe(document.body, { childList: true });
+    });
+  });
+  container.querySelectorAll('.btn-delete-ra').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showConfirm({
+        title: 'Delete Reform Area', message: `Delete <strong>${btn.dataset.name}</strong>?`, type: 'danger', confirmText: 'Delete',
+        onConfirm: () => {
+          Store.deleteReformArea(btn.dataset.id);
+          renderSchemaBuilderTab(container, editionId);
+          showToast('Reform Area deleted.', 'success');
+        }
+      });
     });
   });
 
-  // Schema actions
+  // 2. Action Point Groups & Questions (Middle Panel)
+  
+  // Expand/Collapse AP Group
+  container.querySelectorAll('.ap-group-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-add-q')) return; // Ignore if clicking Add Question
+      const apId = header.dataset.apid;
+      if (_expandedApGroups.has(apId)) {
+        _expandedApGroups.delete(apId);
+      } else {
+        _expandedApGroups.add(apId);
+      }
+      renderSchemaBuilderTab(container, editionId);
+    });
+  });
+
+  // Select Question
+  container.querySelectorAll('.q-item').forEach(item => {
+    item.addEventListener('click', () => {
+      _activeQuestionId = item.dataset.qid;
+      renderSchemaBuilderTab(container, editionId);
+    });
+  });
+
+  // Add AP Group
+  container.querySelector('#btn-add-ap-group')?.addEventListener('click', () => {
+    if (!_activeReformAreaId) { showToast('Select a Reform Area first.', 'error'); return; }
+    const newApId = 'ap_' + Date.now();
+    const title = prompt("Enter Action Point Group name:", "New Action Point");
+    if (!title) return;
+    
+    // We create an initial anchor question for the new group
+    const newQId = 'q_' + Date.now();
+    Store.createField(editionId, _activeReformAreaId, {
+      fieldType: 'text', label: 'New Question', actionPointTitle: title, actionPointId: newApId, questionId: newQId
+    });
+    _expandedApGroups.add(newApId);
+    _activeQuestionId = newQId;
+    renderSchemaBuilderTab(container, editionId);
+    showToast('Action Point Group added!', 'success');
+  });
+
+  // Add Question to Group
+  container.querySelectorAll('.btn-add-q').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const apId = btn.dataset.apid;
+      const groupObj = apGroupsMap[apId];
+      const newQId = 'q_' + Date.now();
+      Store.createField(editionId, _activeReformAreaId, {
+        fieldType: 'text', label: 'New Question', actionPointTitle: groupObj.title, actionPointId: apId, questionId: newQId
+      });
+      _expandedApGroups.add(apId);
+      _activeQuestionId = newQId;
+      renderSchemaBuilderTab(container, editionId);
+      showToast('Question added!', 'success');
+    });
+  });
+
+  // Delete Question
+  container.querySelectorAll('.btn-delete-q').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qId = btn.dataset.qid;
+      showConfirm({
+        title: 'Delete Question', message: 'Delete this question and all its dynamic form fields?', type: 'danger', confirmText: 'Delete',
+        onConfirm: () => {
+          // Both new fields and legacy virtual fields match:
+          const fieldsToDelete = Store.getFieldsByReformArea(_activeReformAreaId).filter(f => f.questionId === qId || (!f.questionId && 'q_legacy_' + f.id === qId));
+          fieldsToDelete.forEach(f => Store.deleteField(f.id));
+          _activeQuestionId = null;
+          renderSchemaBuilderTab(container, editionId);
+          showToast('Question deleted!', 'success');
+        }
+      });
+    });
+  });
+
+  // Question Master Property Editor Sync
+  container.querySelectorAll('.cfc-q-prop-input').forEach(input => {
+    input.addEventListener('change', () => {
+      const qId = input.dataset.qid;
+      const propName = input.dataset.prop;
+      let val = input.type === 'checkbox' ? input.checked : input.value;
+      if (propName === 'maxScore') val = parseFloat(val) || 1;
+      
+      const matchingFields = Store.getFieldsByReformArea(_activeReformAreaId).filter(f => f.questionId === qId || (!f.questionId && 'q_legacy_' + f.id === qId));
+      matchingFields.forEach(f => {
+        // If it was a legacy field, explicitly persist the questionId now that it is modified
+        const updateData = { [propName]: val, ...(propName === 'maxScore' ? { weight: val } : {}) };
+        if (!f.questionId) updateData.questionId = qId;
+        Store.updateField(f.id, updateData);
+      });
+      renderSchemaBuilderTab(container, editionId);
+    });
+  });
+
+  // 3. Toolbox & Canvas Event Listeners
+  container.querySelectorAll('.toolbox-item').forEach(item => {
+    item.addEventListener('click', () => {
+      if (!_activeReformAreaId || !_activeQuestionId) { showToast('Select a Question first.', 'error'); return; }
+      _addFieldFromToolbox(container, editionId, item.dataset.type, null, _activeQuestionId);
+    });
+
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'toolbox', type: item.dataset.type }));
+      item.classList.add('dragging');
+      const canvas = container.querySelector('#canvas-fields-list');
+      if (canvas) canvas.classList.add('drag-active');
+    });
+
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      const canvas = container.querySelector('#canvas-fields-list');
+      if (canvas) canvas.classList.remove('drag-active');
+    });
+  });
+
   container.querySelector('#btn-save-schema-version')?.addEventListener('click', () => {
+    // Ensure any legacy virtual IDs are officially persisted during manual save
+    const all = Store.getFieldsByEdition(editionId);
+    all.forEach(f => {
+      let updates = {};
+      if (!f.questionId) updates.questionId = 'q_legacy_' + f.id;
+      if (!f.actionPointId) {
+        updates.actionPointId = 'ap_legacy_' + f.id;
+        updates.actionPointTitle = f.actionPointTitle || 'Default Action Point Group';
+      }
+      if (Object.keys(updates).length > 0) {
+        Store.updateField(f.id, updates);
+      }
+    });
+    
     const sv = Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Manual save');
-    showToast(`Schema ${sv.versionLabel} saved!`, 'success');
+    showToast(`Schema saved!`, 'success');
   });
 
   container.querySelector('#btn-view-versions')?.addEventListener('click', () => _openVersionHistoryModal(editionId, container));
@@ -1153,22 +1458,76 @@ function renderSchemaBuilderTab(container, editionId) {
   _attachCanvasListeners(container, editionId);
 }
 
-function _renderFormCanvas(editionId, reformAreaId) {
+function _addFieldFromToolbox(container, editionId, fieldType, insertBeforeId = null, questionId = null) {
+  const el = TOOLBOX_ELEMENTS.find(e => e.id === fieldType);
+  
+  // Inherit properties from existing fields in the question so they stay in sync
+  const existingFields = Store.getFieldsByReformArea(_activeReformAreaId).filter(f => f.questionId === questionId || (!f.questionId && 'q_legacy_' + f.id === questionId));
+  const template = existingFields[0] || {};
+  
+  // Also, ensure the parent Action Point ID is inherited
+  const apId = template.actionPointId || 'ap_legacy_' + (template.id || Date.now());
+  
+  Store.createField(editionId, _activeReformAreaId, {
+    fieldType,
+    label: el?.label || fieldType,
+    text: el?.label || fieldType,
+    required: template.required || false,
+    mandatory: template.mandatory || false,
+    weight: template.weight || 1, 
+    maxScore: template.maxScore || 1,
+    actionPointId: apId,
+    actionPointTitle: template.actionPointTitle || 'Default Action Point Group',
+    questionId: questionId,
+    description: template.description || '',
+    helpText: template.helpText || '',
+    guidelinePage: template.guidelinePage || '',
+    scoringCriteria: template.scoringCriteria || '',
+    validationRules: template.validationRules || ''
+  }, insertBeforeId);
+  
+  Store.addAuditLog(getCurrentUser().id, `Added ${el?.label} to schema`, 'schema', editionId);
+  Store.saveSchemaVersion(editionId, getCurrentUser().id, `Added ${el?.label}`);
+  const canvas = container.querySelector('#schema-canvas');
+  if (canvas) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId, _activeQuestionId);
+  _attachCanvasListeners(container, editionId);
+  showToast(`${el?.label} added!`, 'success');
+}
+
+function _renderFormCanvas(editionId, reformAreaId, filterQuestionId = null) {
   const ra = Store.getReformAreaById(reformAreaId);
   if (!ra) return '<div class="canvas-empty"><p>Reform area not found.</p></div>';
-  const fields = Store.getFieldsByReformArea(reformAreaId);
+  let fields = Store.getFieldsByReformArea(reformAreaId);
+  
+  if (filterQuestionId) {
+    fields = fields.filter(f => f.questionId === filterQuestionId || (!f.questionId && 'q_legacy_' + f.id === filterQuestionId));
+  }
 
-  const fieldsHtml = fields.map((field, idx) => `
-    <div class="canvas-field-card" draggable="true" data-fid="${field.id}">
-      <div class="cfc-drag-handle" title="Drag to reorder">⠿</div>
-      <div class="cfc-type-badge" style="background:${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.color || '#64748b'}22;color:${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.color || '#64748b'}">${TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType)?.icon || '?'} ${field.fieldType}</div>
-      <div class="cfc-body">
-        <input class="cfc-label-input" type="text" value="${field.label || field.text}" placeholder="Label…" data-fid="${field.id}" data-prop="label">
-        ${_renderFieldPreview(field)}
+  const fieldsHtml = fields.map((field, idx) => {
+    const toolEl = TOOLBOX_ELEMENTS.find(e => e.id === field.fieldType);
+    const typeColor = toolEl?.color || '#64748b';
+    const typeIcon = toolEl?.icon || '?';
+    return `
+    <div class="canvas-field-card" data-fid="${field.id}" style="background:var(--bg-card); border:1px dashed var(--border-color); border-radius:8px; margin-bottom:12px;">
+      <div class="cfc-body" style="padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="color:var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.5"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg></div>
+            <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">${field.fieldType} SELECTION</span>
+          </div>
+          <button class="btn btn-delete-field" data-id="${field.id}" style="background:transparent; border:none; padding:4px; color:#ef4444; cursor:pointer;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:#f8fafc; border:1px solid var(--border-color); border-radius:6px; padding:8px 12px;">
+          <input type="text" class="cfc-label-input" value="${(field.label || field.text || '').replace(/"/g, '&quot;')}" placeholder="Question text..." data-fid="${field.id}" data-prop="label" style="background:transparent; border:none; outline:none; flex:1; font-size:13px; color:var(--text-main);">
+          <label style="font-size:11px; font-weight:600; color:var(--text-main); display:flex; align-items:center; gap:4px; cursor:pointer; margin-left:12px;"><input type="checkbox" class="cfc-q-prop-input-field" data-fid="${field.id}" data-prop="required" ${field.required ? 'checked' : ''}> Required</label>
+        </div>
+        
+        <div class="cfc-preview" style="margin-bottom:12px;">${_renderFieldPreview(field)}</div>
         ${field.isUploadElement ? `
-          <div class="cfc-upload-config" style="margin-top:8px;">
-            <label style="font-size:12px;color:var(--text-muted);">Upload requirement:</label>
-            <select class="form-select-sm cfc-upload-req" data-fid="${field.id}" style="margin-top:4px;">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <label style="font-size:11px; font-weight:600; color:var(--text-muted);">Upload:</label>
+            <select class="form-select-sm cfc-upload-req" data-fid="${field.id}" style="border:1px solid var(--border-color); border-radius:4px; font-size:12px; padding:4px 8px;">
               <option value="mandatory" ${field.uploadRequirement === 'mandatory' ? 'selected' : ''}>Mandatory</option>
               <option value="optional" ${field.uploadRequirement === 'optional' ? 'selected' : ''}>Optional</option>
               <option value="none" ${field.uploadRequirement === 'none' ? 'selected' : ''}>Not Required</option>
@@ -1176,49 +1535,34 @@ function _renderFormCanvas(editionId, reformAreaId) {
           </div>
         ` : ''}
         ${field.fieldType === 'hyperlink' ? `
-          <input class="cfc-url-input form-input" type="url" style="margin-top:6px;font-size:12px;" value="${field.url || ''}" placeholder="https://..." data-fid="${field.id}" data-prop="url">
+          <input class="cfc-url-input form-input" type="url" style="width:100%; font-size:12px; border:1px solid var(--border-color); border-radius:4px; padding:6px 10px;" value="${field.url || ''}" placeholder="https://..." data-fid="${field.id}" data-prop="url">
         ` : ''}
-        ${field.fieldType === 'radio' || field.fieldType === 'dropdown' || field.fieldType === 'multiselect' || field.fieldType === 'checkbox' ? `
-          <div style="margin-top:8px;">
-            <label style="font-size:12px;color:var(--text-muted);">Options (one per line):</label>
-            <textarea class="cfc-options-input form-input" style="margin-top:4px;font-size:12px;" rows="3" data-fid="${field.id}" data-prop="options" placeholder="Option 1&#10;Option 2&#10;Option 3">${(field.options || []).join('\n')}</textarea>
+        ${['radio','dropdown','multiselect','checkbox'].includes(field.fieldType) ? `
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <label style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Options (one per line):</label>
+            <textarea class="cfc-options-input form-input" rows="3" data-fid="${field.id}" data-prop="options" placeholder="Option 1&#10;Option 2&#10;Option 3" style="border:1px solid var(--border-color); border-radius:6px; font-size:13px; padding:8px 12px; resize:vertical;">${(field.options || []).join('\n')}</textarea>
           </div>
         ` : ''}
-        <div class="cfc-ap-row" style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-          <label style="font-size:11px;color:var(--text-muted);min-width:70px;">Action Point:</label>
-          <input class="cfc-ap-title-input form-input" type="text" style="font-size:12px;padding:4px 8px;height:auto;" value="${field.actionPointTitle || ''}" placeholder="e.g. Action Point 1: Policy Metric" data-fid="${field.id}">
-        </div>
-        <div class="cfc-meta-row">
-          <label class="cfc-toggle-label"><input type="checkbox" class="cfc-required-chk" data-fid="${field.id}" ${field.required ? 'checked' : ''}> Required</label>
-          <label class="cfc-toggle-label" style="margin-left:12px"><input type="checkbox" class="cfc-mandatory-chk" data-fid="${field.id}" ${field.mandatory ? 'checked' : ''}> Mandatory Upload</label>
-          <input class="cfc-score-input" type="number" min="0" max="100" value="${field.maxScore || 1}" placeholder="Score" data-fid="${field.id}" data-prop="maxScore" style="width:70px;margin-left:auto;" title="Max score for this question">
-        </div>
-      </div>
-      <div class="cfc-actions">
-        <button class="btn btn-xs btn-danger btn-delete-field" data-id="${field.id}" title="Delete">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-        </button>
       </div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 
   return `
-    <div class="canvas-header" style="border-left:4px solid ${ra.color};">
-      <div>
-        <h2>${ra.name}</h2>
-        <p style="font-size:13px;color:var(--text-muted)">${ra.description || 'No description'}</p>
-      </div>
-      <span class="count-chip">${fields.length} elements</span>
-    </div>
-    <div class="canvas-fields" id="canvas-fields-list">
+    <div style="padding-left:0px;">
+      <div class="canvas-fields" id="canvas-fields-list" style="background:transparent;border:none;padding:0;gap:20px;">
       ${fields.length === 0 ? `
-        <div class="canvas-drop-hint">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border-color)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <p>Click any element in the Toolbox →<br>to add it here</p>
+        <div class="canvas-drop-zone">
+          <div class="canvas-drop-zone-inner">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p>Drag elements from the <strong>Toolbox</strong><br>or click them to add here</p>
+          </div>
         </div>
       ` : fieldsHtml}
+      </div>
     </div>
   `;
+
 }
 
 function _renderFieldPreview(field) {
@@ -1303,50 +1647,47 @@ function _attachCanvasListeners(container, editionId) {
           Store.deleteField(btn.dataset.id);
           Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Deleted field');
           const canvas = container.querySelector('#schema-canvas');
-          if (canvas && _activeReformAreaId) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId);
+          if (canvas && _activeReformAreaId) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId, _activeActionPointId);
           _attachCanvasListeners(container, editionId);
         }
       });
     });
   });
-  // Drag and drop for fields reordering
-  let draggedFieldId = null;
-  container.querySelectorAll('.canvas-field-card').forEach(card => {
-    card.addEventListener('dragstart', (e) => {
-      draggedFieldId = card.dataset.fid;
-      e.dataTransfer.effectAllowed = 'move';
-      card.style.opacity = '0.5';
-    });
+  // ── Drag-and-drop: toolbox-to-canvas drops ──
+  const fieldsList = container.querySelector('#canvas-fields-list');
 
-    card.addEventListener('dragend', () => {
-      card.style.opacity = '1';
-    });
-
-    card.addEventListener('dragover', (e) => {
+  // Canvas as a whole: accept drops from toolbox
+  if (fieldsList) {
+    fieldsList.addEventListener('dragover', (e) => {
       e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      fieldsList.classList.add('drag-over');
     });
-
-    card.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const targetFieldId = card.dataset.fid;
-      if (draggedFieldId && draggedFieldId !== targetFieldId) {
-        const fields = Store.getFieldsByReformArea(_activeReformAreaId);
-        const orderedIds = [...fields.map(f => f.id)];
-        const draggedIdx = orderedIds.indexOf(draggedFieldId);
-        const targetIdx = orderedIds.indexOf(targetFieldId);
-        orderedIds.splice(draggedIdx, 1);
-        orderedIds.splice(targetIdx, 0, draggedFieldId);
-        Store.reorderFields(_activeReformAreaId, orderedIds);
-        Store.saveSchemaVersion(editionId, getCurrentUser().id, 'Reordered questions');
-
-        // Re-render canvas
-        const canvas = container.querySelector('#schema-canvas');
-        if (canvas && _activeReformAreaId) canvas.innerHTML = _renderFormCanvas(editionId, _activeReformAreaId);
-        _attachCanvasListeners(container, editionId);
-        showToast('Questions reordered!', 'success');
+    fieldsList.addEventListener('dragleave', (e) => {
+      if (!fieldsList.contains(e.relatedTarget)) {
+        fieldsList.classList.remove('drag-over');
       }
     });
-  });
+    fieldsList.addEventListener('drop', (e) => {
+      e.preventDefault();
+      fieldsList.classList.remove('drag-over', 'drag-active');
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.source === 'toolbox' && data.type) {
+          if (!_activeReformAreaId) { showToast('Select a Reform Area first.', 'error'); return; }
+          
+          // Determine the target field ID if dropped exactly on a card
+          let insertBeforeId = null;
+          const targetCard = e.target.closest('.canvas-field-card');
+          if (targetCard) {
+              insertBeforeId = targetCard.dataset.fid;
+          }
+
+          _addFieldFromToolbox(container, editionId, data.type, insertBeforeId, _activeActionPointId);
+        }
+      } catch (_) {}
+    });
+  }
 }
 
 function _openVersionHistoryModal(editionId, container) {

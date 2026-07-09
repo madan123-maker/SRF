@@ -1,6 +1,6 @@
 import { adminPanel, userPanel, uiState } from '../core/app.js';
 import { getCurrentUser, isSuperAdmin, isAdmin, login } from '../auth/auth.js';
-import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment, getSectionsByEdition, getFieldsBySection, fetchAllAdmins, updateAdminAPI, deleteAdminAPI, updateUserAPI, deleteUserAPI } from '../db/store.js';
+import { getDb, getEditions, forceSave, addAuditLog, initStore, getUsers, getUserById, deleteUser, updateUser, importUsersBulk, getDepartments, createUser, getAssignments, getEditionById, getFieldById, removeAssignment, createAssignmentsBulk, addNotification, getGuidelines, deleteGuideline, createGuideline, getAuditLogs, calculateApplicationScore, calculateApplicationMaxScore, deleteDepartment, createDepartment, updateDepartment, getReformAreas as getSectionsByEdition, getFieldsByReformArea as getFieldsBySection, fetchAllAdmins, updateAdminAPI, deleteAdminAPI, updateUserAPI, deleteUserAPI } from '../db/store.js';
 import { pushToNavHistory, cleanupAllHeartbeats } from '../core/bootstrap.js';
 import { renderAdminAnalyticsDashboard } from '../modules/advancedDashboard.js';
 import { renderAssignedDetailsPanel } from '../panels/publisherPanel.js';
@@ -11,7 +11,7 @@ import { showToast } from '../ui/toastManager.js';
 import { showConfirm } from '../ui/confirmDialog.js';
 import { statesDistrictsData, allStates } from '../data/geoData.js';
 import { _statusClass, _statusLabel } from '../panels/applicationForm.js';
-import { initEditionManager } from '../modules/editionManager.js';
+import { initEditionManager, renderEditionWorkspace } from '../modules/editionManager.js';
 import { NOTIFICATION_EVENTS } from '../db/schema.js';
 
 let activeEditionId = null;
@@ -203,7 +203,8 @@ export function openEditionTracker(editionId) {
 
   const trackerEl = document.getElementById('admin-tracker-view');
   trackerEl.classList.remove('hidden');
-  renderApplicationTracker(trackerEl, editionId, () => switchAdminTab('editions'));
+  // Use the full Edition Workspace (Applications + Schema Builder + Reform Areas + etc.)
+  renderEditionWorkspace(trackerEl, editionId, () => switchAdminTab('editions'));
 }
 
 export function renderSchemaEditorAdmin(container) {

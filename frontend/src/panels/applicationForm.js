@@ -194,13 +194,50 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
       </div>
     `;
 
-    const fieldsHtml = group.fields.map(field => {
-      const existingAnswer = answersMap[field.id];
-      const val = existingAnswer?.value || '';
-      const guidelines = getGuidelines({ fieldId: field.id });
+    // Group by questionId
+    const qMap = {};
+    const qGroups = [];
+    group.fields.forEach(f => {
+      const qId = f.questionId || f.id; // fallback to f.id if no questionId
+      if (!qMap[qId]) {
+        qMap[qId] = { id: qId, fields: [] };
+        qGroups.push(qMap[qId]);
+      }
+      qMap[qId].fields.push(f);
+    });
 
-      // Automatic Guidelines PDF Hyperlink (offset from page 9)
-      const pageNum = getGuidelinePageForQuestion(field.num);
+    const questionsHtmlBlock = qGroups.map(qGroup => {
+      const firstField = qGroup.fields[0];
+      const guidelines = getGuidelines({ fieldId: firstField.id }); 
+
+      const qAnswers = qGroup.fields.map(f => answersMap[f.id]);
+      
+      const hasRejected = qAnswers.some(a => a?.questionStatus === 'Rejected');
+      const hasDocsReq = qAnswers.some(a => a?.questionStatus === 'Additional Documents Requested' || a?.questionStatus === 'Docs Requested');
+      const allSubmitted = qAnswers.length > 0 && qAnswers.every(a => a?.questionStatus === 'Submitted');
+      const allApproved = qAnswers.length > 0 && qAnswers.every(a => a?.questionStatus === 'Approved');
+      
+      const isQuestionEditable = isAppDraft || hasRejected || hasDocsReq || qAnswers.some((a, idx) => !isQuestionFilled(a, qGroup.fields[idx]));
+      
+      let questionStatusBadge = '';
+      let aggregateStatus = '';
+      if (hasRejected) aggregateStatus = 'Rejected';
+      else if (hasDocsReq) aggregateStatus = 'Docs Requested';
+      else if (allApproved) aggregateStatus = 'Approved';
+      else if (allSubmitted) aggregateStatus = 'Submitted';
+      else if (qAnswers.some(a => a?.questionStatus && a?.questionStatus !== 'Draft')) aggregateStatus = 'In Progress';
+      
+      if (aggregateStatus && aggregateStatus !== 'Draft') {
+        const qStatusCls = _statusClass(aggregateStatus);
+        questionStatusBadge = `<span class="status-badge ${qStatusCls}" style="font-size:9px; vertical-align:middle; margin-left:8px;">${aggregateStatus}</span>`;
+      }
+
+      const aggregateScore = qAnswers.reduce((sum, a) => sum + (a?.questionScore || 0), 0);
+      const scoreText = allApproved ? 
+        `<span style="color:var(--success); font-weight:700; margin-left:8px;">[Score: ${aggregateScore} / ${firstField.weight || 1}]</span>` : 
+        `<span style="color:var(--text-dark); margin-left:8px;">[Marks: ${firstField.weight || 1}]</span>`;
+
+      const pageNum = getGuidelinePageForQuestion(firstField.num);
       const pdfGuideHtml = pageNum ? `
         <a href="/SRF_6_Framework_VF.pdf#page=${pageNum}" target="_blank" class="guideline-link" title="Open DPIIT Guidelines PDF on page ${pageNum}" style="background:rgba(99,102,241,0.08); color:var(--accent-indigo); padding:4px 8px; border-radius:4px; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
           📄 DPIIT Guidelines (Page ${pageNum})
@@ -213,134 +250,157 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
         </a>
       `).join('');
 
-      // Question statuses
-      const isQuestionSubmitted = existingAnswer?.questionStatus === 'Submitted';
-      const isQuestionApproved = existingAnswer?.questionStatus === 'Approved';
-      const isQuestionRejected = existingAnswer?.questionStatus === 'Rejected';
-      const isQuestionDocsReq = existingAnswer?.questionStatus === 'Additional Documents Requested' || existingAnswer?.questionStatus === 'Docs Requested';
-      const isQuestionEditable = isAppDraft || isQuestionRejected || isQuestionDocsReq || !isQuestionFilled(existingAnswer, field);
-      const freezeInputs = !isQuestionEditable;
+      const fieldLinkHtml = (firstField.url && firstField.url !== '#') ? `
+        <a href="${firstField.url}" target="_blank" class="guideline-link" title="Reference Link" style="background:rgba(99,102,241,0.08); color:var(--accent-indigo); padding:4px 8px; border-radius:4px; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
+          🔗 Reference Link
+        </a>
+      ` : '';
+      
+      const hasRejectedDocsAggregate = qAnswers.some(ans => ans?.files?.some(f => f.fileStatus === 'Rejected'));
+      
+      const fieldsContentHtml = qGroup.fields.map((field, fieldIdx) => {
+        const existingAnswer = answersMap[field.id];
+        const val = existingAnswer?.value || '';
+        const freezeInputs = !isQuestionEditable;
+        
+        let canvasFieldsHtml = '';
+        let elementsList = field.elements || [];
+        if (typeof elementsList === 'string') {
+          try { elementsList = JSON.parse(elementsList); } catch (e) { elementsList = []; }
+        }
+        
+        const inputHtml = renderFieldInput(field, val, freezeInputs, appId);
+        
+        const hasCustomElements = Array.isArray(elementsList) && elementsList.length > 0 && !(elementsList.length === 1 && (elementsList[0].id.startsWith('el_srf6_') || elementsList[0].id.startsWith('main_el_')));
+        if (hasCustomElements) {
+          let valuesMap = {};
+          if (val) { try { valuesMap = JSON.parse(val); } catch (e) { valuesMap = { "legacy": val }; } }
+          canvasFieldsHtml = elementsList.map(el => {
+            const elVal = valuesMap[el.id] || (el.type === field.fieldType ? val : '');
+            return renderUserElementInput(el, field.id, elVal, freezeInputs, appId);
+          }).join('');
+        } else {
+          canvasFieldsHtml = `<div class="question-input-wrap">${inputHtml}</div>`;
+        }
 
-      const inputHtml = renderFieldInput(field, val, freezeInputs, appId);
-
-      let questionStatusBadge = '';
-      if (existingAnswer?.questionStatus && existingAnswer?.questionStatus !== 'Draft') {
-        const qStatusCls = _statusClass(existingAnswer.questionStatus);
-        questionStatusBadge = `<span class="status-badge ${qStatusCls}" style="font-size:9px; vertical-align:middle; margin-left:8px;">${existingAnswer.questionStatus}</span>`;
-      }
-
-      // Score / Marks Text
-      const scoreText = isQuestionApproved ? 
-        `<span style="color:var(--success); font-weight:700; margin-left:8px;">[Score: ${existingAnswer?.questionScore || 0} / ${field.weight || 1}]</span>` : 
-        `<span style="color:var(--text-dark); margin-left:8px;">[Marks: ${field.weight || 1}]</span>`;
-
-      // Standard doc uploads
-      const mandatoryDocs = (field.docs || []).filter(d => d.requirement === 'mandatory');
-      const optionalDocs  = (field.docs || []).filter(d => d.requirement !== 'mandatory');
-
-      const hasRejectedDocs = existingAnswer?.files?.some(f => f.fileStatus === 'Rejected');
-
-      const docsHtml = [...mandatoryDocs, ...optionalDocs].map(doc => {
-        const existing = existingAnswer?.files?.find(f => f.docId === doc.id);
-        const isCustomSlot = doc.id.startsWith('custom_doc_');
-        const isRejected = existing?.fileStatus === 'Rejected';
-        return `
-          <div class="doc-upload-row ${doc.requirement === 'mandatory' ? 'doc-mandatory' : 'doc-optional'}">
-            <div class="doc-info">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span>${doc.name}</span>
-            </div>
-            <div class="doc-upload-action">
-              ${existing ? `
-                <div style="display:flex; flex-direction:column; align-items:flex-end; margin-right:8px;">
-                  <span class="doc-uploaded" style="${isRejected ? 'color:var(--danger); font-weight:600;' : ''}">
-                    ${isRejected ? '✕' : '✓'} <a href="#" class="user-view-doc-link" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" data-doc-name="${existing.name}" style="text-decoration:underline; cursor:pointer; color:inherit;">${existing.name}</a>
-                    ${existing.fileStatus ? `<span class="status-badge ${_statusClass(existing.fileStatus)}" style="font-size:9px; margin-left:4px;">${existing.fileStatus}</span>` : ''}
-                  </span>
-                  ${isRejected && existing.fileRejectionReason ? `
-                    <span style="color:var(--danger); font-size:11px; margin-top:2px;">Reason: ${existing.fileRejectionReason}</span>
-                  ` : ''}
-                </div>
-              ` : ''}
-              ${isCustomSlot && isQuestionEditable ? `
-                <button class="btn btn-xs btn-outline btn-delete-doc-slot" data-field-id="${field.id}" data-doc-id="${doc.id}" style="color:var(--danger); border-color:rgba(239,68,68,0.2); margin-right:4px;">✕ Delete Slot</button>
-              ` : ''}
-              ${(isQuestionEditable && existing?.fileStatus !== 'Approved') || isRejected ? `
-                <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
-                  ${existing ? 'Replace' : 'Upload'}
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
-                </label>
-              ` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      // Custom Document Uploads Widget ("Other" for multiple file uploads)
-      const standardDocIds = (field.docs || []).map(d => d.id);
-      const customFiles = (existingAnswer?.files || []).filter(f => !standardDocIds.includes(f.docId));
-
-      const customDocsHtml = customFiles.map(f => {
-        const isRejected = f.fileStatus === 'Rejected';
-        return `
-          <div class="doc-upload-row doc-optional" style="border-style: dashed; border-color: var(--primary);">
-            <div class="doc-info">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <span>${f.customLabel || 'Other Document'}</span>
-              <span class="doc-req-tag tag-optional" style="background:rgba(99, 102, 241, 0.08); color:var(--accent-indigo)">Other</span>
-            </div>
-            <div class="doc-upload-action">
-              <div style="display:flex; flex-direction:column; align-items:flex-end; margin-right:8px;">
-                <span class="doc-uploaded" style="${isRejected ? 'color:var(--danger); font-weight:600;' : ''}">
-                  ${isRejected ? '✕' : '✓'} <a href="#" class="user-view-doc-link" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-doc-name="${f.name}" style="text-decoration:underline; cursor:pointer; color:inherit;">${f.name}</a>
-                  ${f.fileStatus ? `<span class="status-badge ${_statusClass(f.fileStatus)}" style="font-size:9px; margin-left:4px;">${f.fileStatus}</span>` : ''}
-                </span>
-                ${isRejected && f.fileRejectionReason ? `
-                  <span style="color:var(--danger); font-size:11px; margin-top:2px;">Reason: ${f.fileRejectionReason}</span>
+        const mandatoryDocs = (field.docs || []).filter(d => d.requirement === 'mandatory');
+        const optionalDocs  = (field.docs || []).filter(d => d.requirement !== 'mandatory');
+        
+        const docsHtml = [...mandatoryDocs, ...optionalDocs].map(doc => {
+          const existing = existingAnswer?.files?.find(f => f.docId === doc.id);
+          const isCustomSlot = doc.id.startsWith('custom_doc_');
+          const isRejected = existing?.fileStatus === 'Rejected';
+          return `
+            <div class="doc-upload-row ${doc.requirement === 'mandatory' ? 'doc-mandatory' : 'doc-optional'}">
+              <div class="doc-info">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${doc.name}</span>
+              </div>
+              <div class="doc-upload-action">
+                ${existing ? `
+                  <div style="display:flex; flex-direction:column; align-items:flex-end; margin-right:8px;">
+                    <span class="doc-uploaded" style="${isRejected ? 'color:var(--danger); font-weight:600;' : ''}">
+                      ${isRejected ? '✕' : '✓'} <a href="#" class="user-view-doc-link" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" data-doc-name="${existing.name}" style="text-decoration:underline; cursor:pointer; color:inherit;">${existing.name}</a>
+                      ${existing.fileStatus ? `<span class="status-badge ${_statusClass(existing.fileStatus)}" style="font-size:9px; margin-left:4px;">${existing.fileStatus}</span>` : ''}
+                    </span>
+                    ${isRejected && existing.fileRejectionReason ? `<span style="color:var(--danger); font-size:11px; margin-top:2px;">Reason: ${existing.fileRejectionReason}</span>` : ''}
+                  </div>
+                ` : ''}
+                ${isCustomSlot && isQuestionEditable ? `<button class="btn btn-xs btn-outline btn-delete-doc-slot" data-field-id="${field.id}" data-doc-id="${doc.id}" style="color:var(--danger); border-color:rgba(239,68,68,0.2); margin-right:4px;">✕ Delete Slot</button>` : ''}
+                ${(isQuestionEditable && existing?.fileStatus !== 'Approved') || isRejected ? `
+                  <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
+                    ${existing ? 'Replace' : 'Upload'}
+                    <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${doc.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
+                  </label>
                 ` : ''}
               </div>
-              ${isQuestionEditable && f.fileStatus !== 'Approved' ? `
-                <button class="btn btn-xs btn-outline btn-delete-custom-doc" data-field-id="${field.id}" data-doc-id="${f.docId}" style="color:var(--danger); border-color:rgba(239,68,68,0.2); margin-right:4px;">✕ Remove</button>
-                <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
-                  Replace
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
-                </label>
-              ` : isRejected ? `
-                <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
-                  Replace
-                  <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
-                </label>
+            </div>
+          `;
+        }).join('');
+
+        const standardDocIds = (field.docs || []).map(d => d.id);
+        const customFiles = (existingAnswer?.files || []).filter(f => !standardDocIds.includes(f.docId));
+        const customDocsHtml = customFiles.map(f => {
+          const isRejected = f.fileStatus === 'Rejected';
+          return `
+            <div class="doc-upload-row doc-optional" style="border-style: dashed; border-color: var(--primary);">
+              <div class="doc-info">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${f.customLabel || 'Other Document'}</span>
+                <span class="doc-req-tag tag-optional" style="background:rgba(99, 102, 241, 0.08); color:var(--accent-indigo)">Other</span>
+              </div>
+              <div class="doc-upload-action">
+                <div style="display:flex; flex-direction:column; align-items:flex-end; margin-right:8px;">
+                  <span class="doc-uploaded" style="${isRejected ? 'color:var(--danger); font-weight:600;' : ''}">
+                    ${isRejected ? '✕' : '✓'} <a href="#" class="user-view-doc-link" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-doc-name="${f.name}" style="text-decoration:underline; cursor:pointer; color:inherit;">${f.name}</a>
+                    ${f.fileStatus ? `<span class="status-badge ${_statusClass(f.fileStatus)}" style="font-size:9px; margin-left:4px;">${f.fileStatus}</span>` : ''}
+                  </span>
+                  ${isRejected && f.fileRejectionReason ? `<span style="color:var(--danger); font-size:11px; margin-top:2px;">Reason: ${f.fileRejectionReason}</span>` : ''}
+                </div>
+                ${isQuestionEditable && f.fileStatus !== 'Approved' ? `
+                  <button class="btn btn-xs btn-outline btn-delete-custom-doc" data-field-id="${field.id}" data-doc-id="${f.docId}" style="color:var(--danger); border-color:rgba(239,68,68,0.2); margin-right:4px;">✕ Remove</button>
+                  <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
+                    Replace
+                    <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
+                  </label>
+                ` : isRejected ? `
+                  <label class="btn btn-xs btn-outline btn-upload-doc" style="cursor:pointer;">
+                    Replace
+                    <input type="file" class="doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" data-doc-id="${f.docId}" data-custom-label="${f.customLabel || 'Other Document'}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv">
+                  </label>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        const hasDocs = (field.docs && field.docs.length > 0) || (field.uploadRequirement && field.uploadRequirement !== 'none');
+        
+        let fieldDocsSectionHtml = '';
+        if (hasDocs || customFiles.length > 0) {
+          fieldDocsSectionHtml = `
+            <div class="doc-uploads-section" style="margin-top:12px; margin-bottom:16px;">
+              <div class="doc-uploads-label" style="font-size:12px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Supporting Documents for ${field.text || field.fieldType}
+              </div>
+              ${docsHtml}
+              ${customDocsHtml}
+              ${isQuestionEditable ? `
+                <div style="margin-top:8px;">
+                  <label class="btn btn-xs btn-outline" style="cursor:pointer; height:32px; font-size:12px; display:inline-flex; align-items:center; gap:4px; border-style:dashed;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><path d="M20.42 10.18a8.87 8.87 0 0 0-14.7-2.06 6 6 0 0 0-.15 11.88"/></svg>
+                    Upload Multiple Files
+                    <input type="file" class="other-doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv" multiple>
+                  </label>
+                </div>
               ` : ''}
             </div>
+          `;
+        }
+
+        return `
+          <div class="field-item" id="fi-${field.id}" style="margin-bottom:12px;">
+            <div class="field-canvas-container">${canvasFieldsHtml}</div>
+            ${fieldDocsSectionHtml}
           </div>
         `;
-      }).join('');
+      }).join(''); 
 
-      // Actions/Status block for all fields
-      const canEdit = isQuestionEditable;
+      const fieldIdsCSV = qGroup.fields.map(f => f.id).join(',');
       const actionsRowHtml = `
-        <div class="field-actions-row" style="margin-top:16px; padding:12px; background:rgba(15,23,42,0.02); border-radius:8px; border:1px dashed var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-          ${canEdit ? `
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <label class="btn btn-xs btn-outline" style="cursor:pointer; height:32px; font-size:12px; display:inline-flex; align-items:center; gap:4px; border-style:dashed;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><path d="M20.42 10.18a8.87 8.87 0 0 0-14.7-2.06 6 6 0 0 0-.15 11.88"/></svg>
-                Upload Multiple Files
-                <input type="file" class="other-doc-file-input hidden" data-app-id="${appId}" data-field-id="${field.id}" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip,.xlsx,.csv" multiple>
-              </label>
-            </div>
-          ` : '<div></div>'}
-          
+        <div class="field-actions-row" style="margin-top:16px; padding:12px; background:rgba(15,23,42,0.02); border-radius:8px; border:1px dashed var(--border-color); display:flex; justify-content:flex-end; align-items:center;">
           <div class="submit-action-wrap">
-            ${isQuestionEditable || hasRejectedDocs ? `
-              <button class="btn btn-xs btn-primary btn-submit-question" data-field-id="${field.id}" style="height:32px; padding:0 14px; font-size:12px; font-weight:700;">
+            ${isQuestionEditable || hasRejectedDocsAggregate ? `
+              <button class="btn btn-xs btn-primary btn-submit-question-group" data-q-id="${qGroup.id}" data-field-ids="${fieldIdsCSV}" style="height:32px; padding:0 14px; font-size:12px; font-weight:700;">
                 ✓ Save Question
               </button>
-            ` : isQuestionSubmitted ? `
+            ` : allSubmitted ? `
               <span style="font-size:12.5px; color:var(--accent-blue); font-weight:600; display:inline-flex; align-items:center; gap:4px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Saved
               </span>
-            ` : isQuestionApproved ? `
+            ` : allApproved ? `
               <span style="font-size:12.5px; color:var(--success); font-weight:600; display:inline-flex; align-items:center; gap:4px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 ✓ Approved
@@ -350,65 +410,12 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
         </div>
       `;
 
-      let canvasFieldsHtml = '';
-      let elementsList = field.elements || [];
-      if (typeof elementsList === 'string') {
-        try {
-          elementsList = JSON.parse(elementsList);
-        } catch (e) {
-          elementsList = [];
-        }
-      }
-      const hasCustomElements = Array.isArray(elementsList) && elementsList.length > 0 && !(elementsList.length === 1 && (elementsList[0].id.startsWith('el_srf6_') || elementsList[0].id.startsWith('main_el_')));
-      if (hasCustomElements) {
-        let valuesMap = {};
-        if (val) {
-          try { valuesMap = JSON.parse(val); } catch (e) { valuesMap = { "legacy": val }; }
-        }
-        canvasFieldsHtml = elementsList.map(el => {
-          const elVal = valuesMap[el.id] || (el.type === field.fieldType ? val : '');
-          return renderUserElementInput(el, field.id, elVal, freezeInputs, appId);
-        }).join('');
-      } else {
-        canvasFieldsHtml = `<div class="question-input-wrap">${inputHtml}</div>`;
-      }
-
-      const hasDocs = (field.docs && field.docs.length > 0) || (field.uploadRequirement && field.uploadRequirement !== 'none');
-      const isPureLayout = Array.isArray(elementsList) && elementsList.length > 0 && elementsList.every(el => ['heading','subheading','description','instruction','divider','card','banner','hyperlink'].includes(el.type));
-      const isLegacyLayout = (!field.elements || field.elements.length === 0) && ['heading','subheading','description','instruction','divider','card','banner','notes','warning','image','hyperlink'].includes(field.fieldType);
-      
-      const fieldLinkHtml = (field.url && field.url !== '#') ? `
-        <a href="${field.url}" target="_blank" class="guideline-link" title="Reference Link" style="background:rgba(99,102,241,0.08); color:var(--accent-indigo); padding:4px 8px; border-radius:4px; font-weight:600; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
-          🔗 Reference Link
-        </a>
-      ` : '';
-
-      if (isPureLayout || isLegacyLayout) {
-        return `
-          <div class="layout-element-group" id="qg-${field.id}" style="margin-bottom:18px;">
-            ${canvasFieldsHtml}
-            ${fieldLinkHtml ? `<div style="margin-top:4px; margin-bottom:8px;">${fieldLinkHtml}</div>` : ''}
-            ${hasDocs ? `
-              <div class="doc-uploads-section" style="margin-top:12px;">
-                <div class="doc-uploads-label">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  Supporting Documents
-                </div>
-                ${docsHtml}
-                ${customDocsHtml}
-                ${actionsRowHtml}
-              </div>
-            ` : ''}
-          </div>
-        `;
-      }
-
       return `
-        <div class="question-group" id="qg-${field.id}" data-field-id="${field.id}" style="margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border-color);">
+        <div class="question-group" id="qg-${qGroup.id}" data-question-id="${qGroup.id}" style="margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border-color);">
           <div class="question-header">
             <div class="question-title-block">
-              <span class="question-num">${field.num || ''}</span>
-              <span class="question-text">${field.text}${field.mandatory ? ' <span class="required-star">*</span>' : ''} ${scoreText} ${questionStatusBadge}</span>
+              <span class="question-num">${firstField.num || ''}</span>
+              <span class="question-text">${firstField.label || firstField.text}${firstField.mandatory ? ' <span class="required-star">*</span>' : ''} ${scoreText} ${questionStatusBadge}</span>
             </div>
             <div class="question-guidelines" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               ${pdfGuideHtml}
@@ -416,23 +423,18 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
               ${guidelineLinks}
             </div>
           </div>
-          ${field.helpText ? `<div class="question-help-text">${field.helpText}</div>` : ''}
-          <div class="question-input-wrap">${canvasFieldsHtml}</div>
+          ${firstField.helpText ? `<div class="question-help-text">${firstField.helpText}</div>` : ''}
           
-          <div class="doc-uploads-section" style="margin-top:12px;">
-            <div class="doc-uploads-label">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Supporting Documents
-            </div>
-            ${docsHtml}
-            ${customDocsHtml}
-            ${actionsRowHtml}
+          <div class="question-fields-wrap" style="margin-top: 16px;">
+            ${fieldsContentHtml}
           </div>
+          
+          ${actionsRowHtml}
         </div>
       `;
-    }).join('');
+    }).join(''); 
 
-    return apHeaderHtml + fieldsHtml;
+    return apHeaderHtml + questionsHtmlBlock;
   }).join('');
 
   container.innerHTML = `
@@ -552,50 +554,60 @@ export async function openApplicationForm(appId, container, allowRemainingUpload
   });
 
   // Individual Save Question Listener
-  container.querySelectorAll('.btn-submit-question').forEach(btn => {
+  container.querySelectorAll('.btn-submit-question-group').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
-      const fieldId = btn.dataset.fieldId;
+      const fieldIds = btn.dataset.fieldIds.split(',');
+      let allSuccess = true;
+      let firstError = '';
 
-      // Read answer fresh from DB (answersMap can be stale if user just selected a radio)
-      const freshAnswers = getAnswersByApplication(appId);
-      const ans = freshAnswers.find(a => a.fieldId === fieldId);
+      for (const fieldId of fieldIds) {
+        // Read answer fresh from DB (answersMap can be stale if user just selected a radio)
+        const freshAnswers = getAnswersByApplication(appId);
+        const ans = freshAnswers.find(a => a.fieldId === fieldId);
 
-      // Also check live DOM for radio value in case saveAnswerCompliance hasn't fired yet
-      const liveRadio = container.querySelector(`input[type="radio"][data-field-id="${fieldId}"]:checked`);
-      const liveInput = container.querySelector(`[data-field-id="${fieldId}"].user-field-input`);
-      const liveVal = ans?.value || liveRadio?.value || liveInput?.value || '';
+        // Also check live DOM for radio value in case saveAnswerCompliance hasn't fired yet
+        const liveRadio = container.querySelector(`input[type="radio"][data-field-id="${fieldId}"]:checked`);
+        const liveInput = container.querySelector(`[data-field-id="${fieldId}"].user-field-input`);
+        const liveVal = ans?.value || liveRadio?.value || liveInput?.value || '';
 
-      // Only require text/choice input validation if the question actually renders input elements
-      const hasInputs = container.querySelector(
-        `input[data-field-id="${fieldId}"]:not([type="file"]), ` +
-        `textarea[data-field-id="${fieldId}"], ` +
-        `select[data-field-id="${fieldId}"], ` +
-        `.user-field-input[data-field-id="${fieldId}"]`
-      );
+        // Only require text/choice input validation if the question actually renders input elements
+        const hasInputs = container.querySelector(
+          `input[data-field-id="${fieldId}"]:not([type="file"]), ` +
+          `textarea[data-field-id="${fieldId}"], ` +
+          `select[data-field-id="${fieldId}"], ` +
+          `.user-field-input[data-field-id="${fieldId}"]`
+        );
 
-      if (hasInputs && !liveVal) {
-        showAlert({
-          title: "Can't Submit Question",
-          message: "can't submit the question and whole application untill user fully fill the form",
-          type: 'error'
-        });
-        return;
+        if (hasInputs && !liveVal) {
+          showAlert({
+            title: "Can't Submit Question",
+            message: "Cannot submit the question until all required form fields are filled.",
+            type: 'error'
+          });
+          return;
+        }
+
+        // If the live DOM has a value not yet persisted, save it first
+        if (!ans?.value && liveVal) {
+          saveAnswerCompliance(appId, fieldId, liveVal);
+        }
+
+        const res = submitQuestion(appId, fieldId, user.id);
+        if (!res.success) {
+          allSuccess = false;
+          firstError = res.error || 'Failed to save question.';
+          break;
+        }
       }
 
-      // If the live DOM has a value not yet persisted, save it first
-      if (!ans?.value && liveVal) {
-        saveAnswerCompliance(appId, fieldId, liveVal);
-      }
-
-      const res = submitQuestion(appId, fieldId, user.id);
-      if (res.success) {
+      if (allSuccess) {
         showToast('Question saved successfully!', 'success');
         openApplicationForm(appId, container); // refresh
       } else {
         showAlert({
           title: "Can't Submit Question",
-          message: `can't submit the question and whole application untill user fully fill the form<br><br><strong>Details:</strong> ${res.error || 'Failed to save question.'}`,
+          message: `Cannot submit the question.<br><br><strong>Details:</strong> ${firstError}`,
           type: 'error'
         });
       }
