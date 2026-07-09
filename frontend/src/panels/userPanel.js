@@ -172,14 +172,10 @@ export function renderApplyPage(container) {
     const hasActiveApp = apps.some(a => a.editionId === e.id && a.status !== 'Rejected' && a.status !== 'Draft');
     if (hasActiveApp) return false;
 
-    // Hide editions with 0 reform areas/sections
-    const allSections = getSectionsByEdition(e.id) || [];
-    if (allSections.length === 0) return false;
-
     if (e.status !== 'published') return false;
 
-    const sections = allSections.filter(sec => isSectionAssignedToUser(sec, user));
-    return sections.length > 0;
+    // Globally unlock newly published Editions inside Explore Applications
+    return true;
   });
 
   container.innerHTML = `
@@ -607,9 +603,9 @@ export function renderExploreApplications(container) {
 
   const renderContent = () => {
     const allApps = getApplicationsByUser(user.id).filter(app => {
-    const ed = getEditionById(app.editionId);
-    return ed && !ed.isDeleted && ed.status === 'published';
-  });
+      const ed = getEditionById(app.editionId);
+      return ed && !ed.isDeleted && ed.status === 'published';
+    });
     const filterStatuses = TAB_STATUSES[state.activeTab] || TAB_STATUSES['All'];
     let apps = allApps.filter(a => filterStatuses.includes(a.status));
 
@@ -682,7 +678,7 @@ export function renderExploreApplications(container) {
 
     const emptyMsg = q
       ? 'Try a different search term.'
-      : 'Go to <strong>Assigned Editions → Active Assignments</strong> and click <strong>Start Application</strong>.';
+      : 'Go to the <strong>Start New Application</strong> tab on your sidebar to begin a submission for any published Edition.';
 
     container.innerHTML = '<div class="section-card" style="margin-bottom:24px;"><div class="section-badge" style="background:rgba(79,70,229,0.08);color:var(--accent-indigo);border:1px solid rgba(79,70,229,0.15);">Explore Applications</div><h1>Explore Applications</h1><p style="color:var(--text-muted);font-size:14px;">Your working area. All applications created from assigned editions are tracked here.</p></div>'
       + '<div style="display:flex;gap:0;border-bottom:1px solid var(--border-color);margin-bottom:20px;flex-wrap:wrap;">' + tabsHtml + '</div>'

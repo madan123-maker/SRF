@@ -170,6 +170,7 @@ model Edition {
   status      String   @default("draft")
   createdBy   String
   createdAt   DateTime @default(now())
+  clonedFrom  String?
   categories  Json?      @default("[]")
   totalMarks  Int      @default(0)
   isDeleted   Boolean  @default(false)

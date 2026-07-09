@@ -831,7 +831,7 @@ router.post('/api/broadcast-notification', verifySession, async (req, res) => {
       return res.status(400).json({ error: 'Message content is required.' });
     }
 
-    const activeUsers = await User.find({ active: { $ne: false } });
+    const activeUsers = await prisma.user.findMany({ where: { active: { not: false } } });
     const notifications = [];
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || '127.0.0.1';
 
@@ -889,7 +889,7 @@ router.post('/api/trigger-reminders', verifySession, async (req, res) => {
     const assignments = await Assignment.find({});
     const applications = await Application.find({});
     const editions = await prisma.edition.findMany({ where: { isDeleted: false } });
-    const users = await User.find({ active: { $ne: false } });
+    const users = await prisma.user.findMany({ where: { active: { not: false } } });
 
     let remindersSent = 0;
     const now = new Date();
@@ -938,11 +938,13 @@ router.post('/api/trigger-reminders', verifySession, async (req, res) => {
 
       if (shouldRemind) {
         // Avoid duplicate notification in 12h
-        const existingNotif = await Notification.findOne({
-          userId: user.id,
-          eventType: eventType,
-          message: reminderMessage,
-          createdAt: { $gte: new Date(now - 12 * 60 * 60 * 1000).toISOString() }
+        const existingNotif = await prisma.notification.findFirst({
+          where: {
+            userId: user.id,
+            eventType: eventType,
+            message: reminderMessage,
+            createdAt: { gte: new Date(now - 12 * 60 * 60 * 1000).toISOString() }
+          }
         });
 
         if (!existingNotif) {
@@ -1352,50 +1354,6 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
   }
 });
 
-// Helper to synchronize collection
-async function syncCollection(Model, items, keyField = 'id', options = {}) {
-  if (!Array.isArray(items) || items.length === 0) {
-    if (!options.skipDelete) {
-      await Model.deleteMany({}, options);
-    }
-    return;
-  }
-
-  const ids = [];
-  const bulkOps = items.map(item => {
-    const query = { [keyField]: item[keyField] };
-    const updateObj = { ...item };
-    delete updateObj._id;
-    if (Model.modelName === 'AuditLog' && options.reqIp) {
-      updateObj.ipAddress = options.reqIp;
-    }
-    ids.push(item[keyField]);
-    return {
-      updateOne: {
-        filter: query,
-        update: { $set: updateObj },
-        upsert: true
-      }
-    };
-  });
-
-  try {
-    if (bulkOps.length > 0) {
-      await Model.bulkWrite(bulkOps, options);
-    }
-  } catch (err) {
-    console.error(`[syncCollection Error] failed to bulk update ${Model.modelName}:`, err);
-  }
-
-  if (!options.skipDelete) {
-    try {
-      await Model.deleteMany({ [keyField]: { $nin: ids } }, options);
-    } catch (err) {
-      console.error(`[syncCollection Error] failed to delete ${Model.modelName}:`, err);
-    }
-  }
-}
-
 // Helper to upsert RecycleBin items without deleting others
 async function upsertRecycleBinItems(items, options = {}) {
   if (!Array.isArray(items)) return;
@@ -1484,11 +1442,12 @@ router.post('/api/files/:appId/:fieldId', verifySession, async (req, res) => {
 
     const { files } = req.body;
     if (!Array.isArray(files)) return res.status(400).json({ error: 'files must be an array' });
-    const result = await ApplicationAnswer.findOneAndUpdate(
-      { applicationId: appId, fieldId },
-      { $set: { files, updatedAt: new Date().toISOString() } },
-      { upsert: true, returnDocument: 'after' }
-    );
+    let result = await prisma.applicationAnswer.findFirst({ where: { applicationId: appId, fieldId } });
+    if (result) {
+      result = await prisma.applicationAnswer.update({ where: { id: result.id }, data: { files, updatedAt: new Date().toISOString() } });
+    } else {
+      result = await prisma.applicationAnswer.create({ data: { id: 'ans_'+Date.now(), applicationId: appId, fieldId, files, updatedAt: new Date().toISOString() } });
+    }
     res.json({ success: true, id: result.id });
   } catch (err) {
     console.error('[API Error] Failed to save files:', err);
@@ -1871,7 +1830,13 @@ router.post('/api/db', verifySession, async (req, res) => {
           const query = { id: app.id };
           const updateObj = { ...app };
           delete updateObj._id;
-          await Application.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
+          const existingApp = await prisma.application.findFirst({ where: query });
+          if (existingApp) {
+            await prisma.application.update({ where: { id: existingApp.id }, data: updateObj });
+          } else {
+             if (!updateObj.id) updateObj.id = 'app_' + Date.now();
+             await prisma.application.create({ data: updateObj });
+          }
         }
       }
 
@@ -2491,7 +2456,7 @@ router.use((err, req, res, next) => {
 // Database cleanup migration for usernames with spaces
 async function cleanupUsernamesWithSpaces() {
   try {
-    const users = await User.find();
+    const users = await prisma.user.findMany();
     let updatedCount = 0;
     for (const user of users) {
       if (user.username && /\s/.test(user.username)) {
@@ -2500,26 +2465,24 @@ async function cleanupUsernamesWithSpaces() {
         console.log(`[Startup Cleanup] Removing spaces from username: "${oldUsername}" -> "${newUsername}"`);
 
         // Update User document
-        await User.updateOne({ _id: user._id }, { username: newUsername });
+        await prisma.user.update({ where: { id: user.id }, data: { username: newUsername } });
         updatedCount++;
 
         // Update any FormField assignments that reference this username
-        const formFields = await FormField.find({
-          $or: [
-            { 'assignment.userIds': oldUsername },
-            { 'assignment.users': oldUsername }
-          ]
+        const allFormFields = await prisma.formField.findMany();
+        const formFieldsToSync = allFormFields.filter(f => {
+          if (!f.data || !f.data.assignment) return false;
+          const a = f.data.assignment;
+          return (a.userIds && Array.isArray(a.userIds) && a.userIds.includes(oldUsername)) ||
+                 (a.users && Array.isArray(a.users) && a.users.includes(oldUsername));
         });
-        for (const field of formFields) {
-          if (field.assignment) {
-            if (field.assignment.userIds) {
-              field.assignment.userIds = field.assignment.userIds.map(uid => uid === oldUsername ? newUsername : uid);
-            }
-            if (field.assignment.users) {
-              field.assignment.users = field.assignment.users.map(uid => uid === oldUsername ? newUsername : uid);
-            }
-            await FormField.updateOne({ _id: field._id }, { assignment: field.assignment });
-          }
+        
+        for (const field of formFieldsToSync) { 
+          if (field.data && field.data.assignment) { 
+             if (field.data.assignment.userIds) { field.data.assignment.userIds = field.data.assignment.userIds.map(uid => uid === oldUsername ? newUsername : uid); } 
+             if (field.data.assignment.users) { field.data.assignment.users = field.data.assignment.users.map(uid => uid === oldUsername ? newUsername : uid); } 
+             await prisma.formField.update({ where: { id: field.id }, data: { data: field.data } }); 
+          } 
         }
       }
     }
@@ -2612,7 +2575,7 @@ router.post('/api/applications/:appId/versions', verifySession, async (req, res)
     }
 
     // Get current version number count
-    const versionCount = await ApplicationVersion.countDocuments({ applicationId: appId });
+    const versionCount = await prisma.applicationVersion.count({ where: { applicationId: appId } });
     const nextVer = versionCount + 1;
 
     const versionId = 'ver_' + appId + '_' + nextVer + '_' + Date.now();
