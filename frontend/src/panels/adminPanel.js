@@ -100,7 +100,7 @@ export function switchAdminTab(tab) {
   });
 
   // Hide all admin views
-  ['admin-analytics-view', 'admin-editions-view', 'admin-tracker-view', 'schema-editor-panel',
+  ['admin-analytics-view', 'admin-editions-view', 'admin-tracker-view',
     'admin-users-view', 'admin-admins-view', 'admin-guidelines-view', 'admin-audit-view', 'admin-settings-view', 'admin-departments-view', 'admin-assigned-details-view', 'admin-messages-view', 'admin-recycle-bin-view', 'admin-governance-view'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.add('hidden');
@@ -129,10 +129,7 @@ export function switchAdminTab(tab) {
       );
       break;
 
-    case 'schema':
-      showView('schema-editor-panel');
-      renderSchemaEditorAdmin(document.getElementById('schema-editor-panel'));
-      break;
+
 
     case 'users':
       showView('admin-users-view');
@@ -195,7 +192,7 @@ export function openEditionTracker(editionId) {
   uiState.activeAdminTab = 'tracker';
   document.querySelectorAll('#sidebar-nav-container .nav-item').forEach(i => i.classList.remove('active'));
 
-  ['admin-editions-view', 'admin-tracker-view', 'schema-editor-panel',
+  ['admin-editions-view', 'admin-tracker-view',
     'admin-users-view', 'admin-guidelines-view', 'admin-audit-view', 'admin-settings-view', 'admin-assigned-details-view', 'admin-messages-view', 'admin-recycle-bin-view'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.add('hidden');
@@ -207,194 +204,7 @@ export function openEditionTracker(editionId) {
   renderEditionWorkspace(trackerEl, editionId, () => switchAdminTab('editions'));
 }
 
-export function renderSchemaEditorAdmin(container) {
-  const editions = getEditions();
-  if (!activeEditionId && editions.length > 0) activeEditionId = editions[0].id;
 
-  container.innerHTML = `
-    <div class="section-card" style="margin-bottom:24px;">
-      <div class="section-badge admin-badge">Schema Editor</div>
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-        <div>
-          <h1>Form Schema Editor</h1>
-          <p style="color:var(--text-muted);font-size:14px;">Build and manage dynamic compliance forms for each SRF edition. Add sections, questions, and configure field types, scoring, and document requirements.</p>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <label style="font-size:13px;font-weight:600;color:var(--text-muted);">Edition:</label>
-          <select id="schema-edition-select" class="form-select-sm" style="min-width:160px;">
-            ${editions.map(e => `<option value="${e.id}" ${e.id === activeEditionId ? 'selected' : ''}>${e.name}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-    </div>
-    <div id="schema-editor-inner"></div>
-  `;
-
-  const editionSelect = container.querySelector('#schema-edition-select');
-  editionSelect.addEventListener('change', () => {
-    activeEditionId = editionSelect.value;
-    renderSchemaEditorAdmin(container);
-  });
-
-  if (activeEditionId) {
-    const sections = getSectionsByEdition(activeEditionId);
-    // Convert to legacy format for formEditor.js compatibility
-    let legacySchema = [];
-    try {
-      legacySchema = sections.map(sec => {
-        const fields = getFieldsBySection(sec.id);
-        const apMap = {};
-        fields.forEach(f => {
-          const apId = f.actionPointId || `${sec.id}_ap0`;
-          const apTitle = f.actionPointTitle || 'Questions';
-          if (!apMap[apId]) apMap[apId] = { id: apId, title: apTitle, questions: [] };
-
-          let parsedElements = f.elements || [];
-          if (typeof parsedElements === 'string') {
-            try {
-              parsedElements = JSON.parse(parsedElements);
-            } catch (e) {
-              parsedElements = [];
-            }
-          }
-          if (!Array.isArray(parsedElements)) {
-            parsedElements = [];
-          }
-
-          let defaultEl = null;
-          if (parsedElements.length === 0) {
-            defaultEl = {
-              id: `el_${f.id}_1`,
-              type: f.fieldType || 'text',
-              label: f.text || f.label || 'Default Element',
-              required: f.mandatory !== false,
-              options: f.options || []
-            };
-            if (f.fieldType === 'radio' && (!defaultEl.options || defaultEl.options.length === 0)) {
-              defaultEl.options = ["Yes", "No"];
-            }
-          }
-
-          apMap[apId].questions.push({
-            id: f.id,
-            num: f.num || '',
-            text: f.text || f.label || '',
-            weight: f.weight || 1,
-            fieldType: f.fieldType || 'text',
-            uploadRequirement: f.uploadRequirement || 'optional',
-            mandatory: f.mandatory !== false,
-            guidelinePage: f.guidelinePage || 1,
-            helpText: f.helpText || '',
-            options: f.options || [],
-            docs: f.docs || [],
-            elements: (parsedElements.length > 0) ? parsedElements : [defaultEl],
-            assignment: f.assignment || { type: 'all', users: [], startups: [], category: '', sector: '', district: '' }
-          });
-        });
-        const secNum = (sec.num && sec.num !== 'undefined') ? sec.num : String(sec.orderIndex + 1);
-        const secTitle = (sec.name && sec.name !== 'undefined') ? sec.name : ((sec.title && sec.title !== 'undefined') ? sec.title : '');
-        const secDesc = (sec.description && sec.description !== 'undefined') ? sec.description : ((sec.desc && sec.desc !== 'undefined') ? sec.desc : '');
-        return {
-          id: sec.id,
-          num: secNum,
-          title: secTitle,
-          desc: secDesc,
-          marks: sec.marks || 10,
-          dueDate: sec.dueDate || '2026-12-31',
-          assignment: sec.assignment || { type: 'all', users: [], startups: [], category: '', sector: '', district: '' },
-          actionPoints: Object.values(apMap)
-        };
-      });
-    } catch (err) {
-      console.error('[Schema Mapping Error]', err);
-    }
-
-    initFormEditor(
-      container.querySelector('#schema-editor-inner'),
-      legacySchema,
-      (schema, verbose = true) => {
-        const db = getDb();
-        if (!db) return;
-
-        // Clean current reformAreas and formFields for this edition
-        db.reformAreas = (db.reformAreas || []).filter(r => r.editionId !== activeEditionId);
-        db.formFields = (db.formFields || []).filter(f => f.editionId !== activeEditionId);
-
-        schema.forEach((sec, secIdx) => {
-          const ra = {
-            id: sec.id,
-            editionId: activeEditionId,
-            name: sec.title || sec.name || '',
-            description: sec.desc || sec.description || '',
-            orderIndex: secIdx,
-            marks: sec.marks || 10,
-            dueDate: sec.dueDate || '2026-12-31',
-            assignment: sec.assignment || { type: 'all', users: [], startups: [], category: '', sector: '', district: '' }
-          };
-          db.reformAreas.push(ra);
-
-          let orderIdx = 0;
-          (sec.actionPoints || []).forEach(ap => {
-            (ap.questions || []).forEach(q => {
-              db.formFields.push({
-                id: q.id,
-                num: q.num,
-                editionId: activeEditionId,
-                reformAreaId: sec.id,
-                actionPointId: ap.id,
-                actionPointTitle: ap.title,
-                fieldType: q.fieldType || 'text',
-                label: q.text || q.label,
-                text: q.text || q.label,
-                placeholder: `Enter response for Question ${q.num}...`,
-                required: q.mandatory !== false,
-                mandatory: q.mandatory !== false,
-                weight: q.weight || 1,
-                maxScore: q.weight || 1,
-                uploadRequirement: q.uploadRequirement || 'optional',
-                options: q.options || [],
-                helpText: q.helpText || '',
-                url: q.url || '',
-                content: q.content || '',
-                orderIndex: orderIdx++,
-                isLayoutElement: ['heading', 'subheading', 'description', 'instruction', 'divider', 'card', 'banner', 'notes', 'warning', 'image', 'hyperlink'].includes(q.fieldType),
-                isUploadElement: ['file', 'pdf', 'imageupload'].includes(q.fieldType),
-                docs: q.docs || [],
-                guidelinePage: q.guidelinePage || null,
-                createdAt: new Date().toISOString(),
-                elements: q.elements || [],
-                assignment: q.assignment || { type: 'all', users: [], startups: [], category: '', sector: '', district: '' }
-              });
-            });
-          });
-        });
-
-        forceSave();
-        addAuditLog(getCurrentUser().id, 'Published schema and updated question assignments', 'schema', activeEditionId);
-        if (verbose) {
-          showToast('Schema saved successfully!', 'success');
-          renderSchemaEditorAdmin(container);
-        }
-      },
-      () => {
-        showConfirm({
-          title: 'Reset Schema',
-          message: 'Reset the schema to the original default configuration?',
-          type: 'danger', confirmText: 'Reset',
-          onConfirm: async () => {
-            const db = getDb();
-            db.reformAreas = (db.reformAreas || []).filter(r => r.editionId !== activeEditionId);
-            db.formFields = (db.formFields || []).filter(f => f.editionId !== activeEditionId);
-            await initStore();
-            showToast('Schema reset to default.', 'success');
-            renderSchemaEditorAdmin(container);
-          }
-        });
-      },
-      getUsers()
-    );
-  }
-}
 
 export function renderUsersPanel(container) {
   const users = getUsers().filter(u => String(u.role).toLowerCase() === 'user');

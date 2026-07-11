@@ -1722,83 +1722,48 @@ export function isFieldAssignedToUser(f, userIdOrObj) {
   const user = (_db.users || []).find((u) => u.id === userId);
   if (!user) return false;
 
-  // 1. Check if assigned via database assignments
-  const editionAssignments = (_db.assignments || []).filter(
-    (a) => a.userId === userId && a.editionId === f.editionId,
-  );
-  const isAssignedInDb = editionAssignments.some((a) => {
-    if (
-      (!a.type || a.type === "Reform Area") &&
-      (a.sectionId === f.reformAreaId || a.reformAreaId === f.reformAreaId)
-    )
-      return true;
-    if (a.type === "Action Point" && a.actionPointId === f.actionPointId)
-      return true;
-    if (a.type === "Question" && (a.questionId === f.id || a.fieldId === f.id))
-      return true;
-    return false;
-  });
+  // Business Rule: No manual Assignment workflow.
+  // Users access published Editions directly.
+  // All schema objects (fields) belonging to a published edition are authorized.
+  const edition = (_db.editions || []).find((e) => e.id === f.editionId);
+  if (edition && edition.status === 'published' && !edition.isDeleted) {
+    return true;
+  }
 
-  // 2. Check if assigned via schema mappings
-  let isAssignedInSchema = false;
+  // Fallback: Check legacy explicit schema mappings (custom assignment type)
   if (f.assignment) {
     const ass = f.assignment;
     if (
-      ass.type === "custom" &&
+      ass.type === 'custom' &&
       ass.users &&
       (ass.users.includes(user.username) || ass.users.includes(user.id))
     ) {
-      isAssignedInSchema = true;
+      return true;
     }
   }
-  const parentRA = (_db.reformAreas || []).find(
-    (s) => s.id === f.reformAreaId && s.editionId === f.editionId,
-  );
-  if (parentRA && parentRA.assignment) {
-    const raAss = parentRA.assignment;
-    if (
-      raAss.type === "custom" &&
-      raAss.users &&
-      (raAss.users.includes(user.username) || raAss.users.includes(user.id))
-    ) {
-      isAssignedInSchema = true;
-    }
-  }
-
-  if (isAssignedInDb || isAssignedInSchema) return true;
 
   return false;
 }
 
 export function isSectionAssignedToUser(sec, userId) {
-  const user = (_db.users || []).find((u) => u.id === userId);
+  // Normalize: accept either a user object or a plain userId string
+  const resolvedId = typeof userId === 'object' && userId !== null ? userId.id : userId;
+  const user = (_db.users || []).find((u) => u.id === resolvedId);
   if (!user) return false;
 
-  // A section is assigned if:
-  // 1. Any field in this section is assigned to the user
-  const fields = getFieldsByReformArea(sec.id);
-  const anyFieldAssigned = fields.some((f) => isFieldAssignedToUser(f, userId));
-  if (anyFieldAssigned) return true;
+  // Business Rule: No manual Assignment workflow.
+  // Users access published Editions directly.
+  // All Reform Areas belonging to a published edition are authorized.
+  const edition = (_db.editions || []).find((e) => e.id === sec.editionId);
+  if (edition && edition.status === 'published' && !edition.isDeleted) {
+    return true;
+  }
 
-  // 2. Or if there is an explicit Reform Area assignment for this section
-  const raAssignments = (_db.assignments || []).filter(
-    (a) => a.userId === userId && a.editionId === sec.editionId,
-  );
-  const isRAAssigned = raAssignments.some((a) => {
-    if (
-      (!a.type || a.type === "Reform Area") &&
-      (a.sectionId === sec.id || a.reformAreaId === sec.id)
-    )
-      return true;
-    return false;
-  });
-  if (isRAAssigned) return true;
-
-  // 3. Or check if the section itself has schema mappings assigning it to the user
+  // Fallback: legacy custom schema mapping check
   if (sec.assignment) {
     const ass = sec.assignment;
     if (
-      ass.type === "custom" &&
+      ass.type === 'custom' &&
       ass.users &&
       (ass.users.includes(user.username) || ass.users.includes(user.id))
     ) {

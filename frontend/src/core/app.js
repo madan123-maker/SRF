@@ -40,7 +40,7 @@ import { renderTaskReviewPanel } from '../modules/taskReviewManager.js';
 import { renderGovernancePanel } from '../modules/governanceManager.js';
 import { boot, cleanupAllHeartbeats, debounce, postJson, checkExistingSession, pushToNavHistory, updateGlobalBackButton, goBack, showLandingView, initGlobalSearch, initPortal } from '../core/bootstrap.js';
 import { openFirstLoginResetModal, openForgotPasswordModal, openRequestNodalModal, openChangePasswordModal, sendPasswordOtp } from '../auth/authModals.js';
-import { renderAdminPortal, renderAdminSidebar, switchAdminTab, openEditionTracker, renderSchemaEditorAdmin, renderUsersPanel, openBulkImportUsersModal, openCreateUserModal, openCreateAdminModal, openAssignmentModal, openEditUserModal, renderGuidelinesPanel, openAddGuidelineModal, exportAllSubmissionsExcelFunc, openExportEditionModal, renderAuditPanel, renderSettingsPanel, renderDepartmentsPanel, openCreateDepartmentModal, openEditDepartmentModal } from '../panels/adminPanel.js';
+import { renderAdminPortal, renderAdminSidebar, switchAdminTab, openEditionTracker, renderUsersPanel, openBulkImportUsersModal, openCreateUserModal, openCreateAdminModal, openAssignmentModal, openEditUserModal, renderGuidelinesPanel, openAddGuidelineModal, exportAllSubmissionsExcelFunc, openExportEditionModal, renderAuditPanel, renderSettingsPanel, renderDepartmentsPanel, openCreateDepartmentModal, openEditDepartmentModal } from '../panels/adminPanel.js';
 import { renderUserPortal, renderUserSidebar, switchUserTab, renderApplyPage, startNewApplication, renderAssignedEditionsPage, isAssignmentValid, isSectionAssignedToUser, isFieldAssignedToUser, getGuidelinePageForQuestion, renderExploreApplications, renderUserAppsFiltered, openApplicationDetail, renderUserProfilePage } from '../panels/userPanel.js';
 import { renderPublisherPanel, renderAssignedDetailsPanel, openReassignModal } from '../panels/publisherPanel.js';
 import { renderNotificationsPage, updateNotificationBadge, showNotificationsDropdown, openNotificationsModal } from '../panels/notifications.js';
@@ -53,7 +53,7 @@ import { openApplicationForm, renderUserElementInput, renderFieldInput, _userFac
 window.switchUserTab = switchUserTab;
 window.openApplicationForm = openApplicationForm;
 window.renderUserSidebar = renderUserSidebar;
-window.renderSchemaEditorAdmin = renderSchemaEditorAdmin;
+
 window.switchAdminTab = switchAdminTab;
 window.boot = boot;
 
@@ -322,7 +322,7 @@ let currentAuditFilterStartDate = '';
 let currentAuditFilterEndDate = '';
 
 // Expose Schema Editor globally for the workspace embedding
-window.renderSchemaEditorAdmin = renderSchemaEditorAdmin;
+
 window.setActiveEditionId = (id) => { activeEditionId = id; };
 window.switchUserTab = switchUserTab;
 window.openApplicationForm = openApplicationForm;

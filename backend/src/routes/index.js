@@ -3,7 +3,31 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { verifySession, verifySessionOptional } from '../middleware/authMiddleware.js';
 import { exportApplicationsToExcel } from '../services/excelExport.js';
-// Removed ancient Mongoose imports
+// Removed ancient Mongoose imports and imported mock models to prevent ReferenceErrors
+import {
+  User,
+  Edition,
+  ReformArea,
+  FormField,
+  Application,
+  ApplicationAnswer,
+  Notification,
+  Assignment,
+  AuditLog,
+  SchemaVersion,
+  Settings,
+  Guideline,
+  DocumentRule,
+  Department,
+  ReassignmentHistory,
+  Message,
+  RecycleBin,
+  ApplicationVersion,
+  ApplicationVersionAnswer,
+  ApplicationLock,
+  SLASettings,
+  BackupRecord
+} from '../models/index.js';
 import emailService from '../services/emailService.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -135,6 +159,7 @@ router.post('/api/auth/refresh', async (req, res) => {
     }
 
     const { password: pw, ...sanitizedUser } = user;
+    if (sanitizedUser.role) sanitizedUser.role = String(sanitizedUser.role).toLowerCase();
 
     // Generate new tokens
     const newAccessToken = jwt.sign(
@@ -280,39 +305,14 @@ router.post('/api/reset-password', async (req, res) => {
   }
 });
 async function isFieldAssignedToUserBackend(field, user, context = {}) {
-  if (!user) return false;
+  if (!user || !field || !field.editionId) return false;
 
-  let assignments = context.assignments;
-  if (!assignments) {
-    assignments = await Assignment.find({ userId: user.id }).lean();
-  }
-
-  const isAssignedInDb = assignments.some(a => {
-    if (a.editionId !== field.editionId) return false;
-    if ((!a.type || a.type === 'Reform Area') && (a.sectionId === field.reformAreaId || a.reformAreaId === field.reformAreaId)) return true;
-    if (a.type === 'Action Point' && a.actionPointId === field.actionPointId) return true;
-    if (a.type === 'Question' && (a.questionId === field.id || a.fieldId === field.id)) return true;
-    return false;
-  });
-  if (isAssignedInDb) return true;
-
-  if (field.assignment) {
-    const ass = field.assignment;
-    if (ass.type === 'custom' && ass.users && (ass.users.includes(user.username) || ass.users.includes(user.id))) {
-      return true;
-    }
-  }
-
-  let reformAreas = context.reformAreas;
-  if (!reformAreas) {
-    reformAreas = await ReformArea.find({ editionId: field.editionId }).lean();
-  }
-  const parentRA = reformAreas.find(s => s.id === field.reformAreaId);
-  if (parentRA && parentRA.assignment) {
-    const raAss = parentRA.assignment;
-    if (raAss.type === 'custom' && raAss.users && (raAss.users.includes(user.username) || raAss.users.includes(user.id))) {
-      return true;
-    }
+  // Business Rule: Users access published Editions directly.
+  // No manual Assignment workflow. All schema objects belonging to a published edition are authorized.
+  const edition = await prisma.edition.findUnique({ where: { id: field.editionId } });
+  
+  if (edition && edition.status === 'published' && !edition.isDeleted) {
+    return true;
   }
 
   return false;
@@ -652,6 +652,7 @@ router.post('/api/register-public', async (req, res) => {
 
     const sanitized = { ...newUser };
     delete sanitized.password;
+    if (sanitized.role) sanitized.role = String(sanitized.role).toLowerCase();
     res.json({ success: true, user: sanitized });
   } catch (err) {
     console.error('[API Public Register Error]:', err);
@@ -1210,42 +1211,12 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
 
     if (req.user.role === 'user') {
       const assignments = await prisma.assignment.findMany({ where: { userId: req.user.id } });
-      const assignedEditionIds = [...new Set(assignments.map(a => a.editionId))];
 
-      const editions = await prisma.edition.findMany({ where: { id: { in: assignedEditionIds }, status: 'published', isDeleted: false } });
+      const editions = await prisma.edition.findMany({ where: { status: 'published', isDeleted: false } });
       const activeEdIds = editions.map(e => e.id);
 
-      const allReformAreas = (await prisma.reformArea.findMany()).map(r => r.data).filter(r => activeEdIds.includes(r.editionId));
-      const allFields = (await prisma.formField.findMany()).map(f => f.data).filter(f => activeEdIds.includes(f.editionId));
-
-      function isFieldAssigned(f) {
-        const isAssignedInDb = assignments.some(a => {
-          if (a.editionId !== f.editionId) return false;
-          if ((!a.type || a.type === 'Reform Area') && (a.sectionId === f.reformAreaId || a.reformAreaId === f.reformAreaId)) return true;
-          if (a.type === 'Action Point' && a.actionPointId === f.actionPointId) return true;
-          if (a.type === 'Question' && (a.questionId === f.id || a.fieldId === f.id)) return true;
-          return false;
-        });
-        if (isAssignedInDb) return true;
-
-        if (f.assignment && f.assignment.type === 'custom' && f.assignment.users && (f.assignment.users.includes(req.user.username) || f.assignment.users.includes(req.user.id))) return true;
-
-        const parentRA = allReformAreas.find(s => s.id === f.reformAreaId && s.editionId === f.editionId);
-        if (parentRA && parentRA.assignment && parentRA.assignment.type === 'custom' && parentRA.assignment.users && (parentRA.assignment.users.includes(req.user.username) || parentRA.assignment.users.includes(req.user.id))) return true;
-
-        return false;
-      }
-
-      const formFields = allFields.filter(isFieldAssigned);
-      const assignedFieldRAIds = formFields.map(f => f.reformAreaId);
-      const assignedRAIds = assignments.map(a => a.reformAreaId || a.sectionId);
-      const allAssignedRAIds = [...new Set([...assignedFieldRAIds, ...assignedRAIds])];
-
-      const reformAreas = allReformAreas.filter(ra => {
-        if (allAssignedRAIds.includes(ra.id)) return true;
-        if (ra.assignment && ra.assignment.type === 'custom' && ra.assignment.users && (ra.assignment.users.includes(req.user.username) || ra.assignment.users.includes(req.user.id))) return true;
-        return false;
-      });
+      const reformAreas = (await prisma.reformArea.findMany()).map(r => r.data).filter(r => activeEdIds.includes(r.editionId));
+      const formFields = (await prisma.formField.findMany()).map(f => f.data).filter(f => activeEdIds.includes(f.editionId));
 
       const applications = (await prisma.application.findMany()).map(a => a.data).filter(a => a.userId === req.user.id && activeEdIds.includes(a.editionId));
       const appIds = applications.map(a => a.id);
@@ -1270,6 +1241,7 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
       const safeUsers = [...usersRawFull, ...adminsRawFull].map(u => {
         const sanitized = { ...u };
         delete sanitized.password;
+        if (sanitized.role) sanitized.role = String(sanitized.role).toLowerCase();
         return sanitized;
       });
 
@@ -1308,6 +1280,7 @@ router.get('/api/db', verifySessionOptional, async (req, res) => {
     const users = allUsersRaw.map(u => {
       const sanitized = { ...u };
       delete sanitized.password;
+      if (sanitized.role) sanitized.role = String(sanitized.role).toLowerCase();
       return sanitized;
     });
 
@@ -1613,7 +1586,8 @@ router.post('/api/db', verifySession, async (req, res) => {
     // Validate lifecycle transitions in payload
     if (payload.applications && Array.isArray(payload.applications)) {
       for (const app of payload.applications) {
-        const existingApp = await Application.findOne({ id: app.id }, null, options).lean();
+        const existingRaw = await prisma.application.findUnique({ where: { id: app.id } });
+        const existingApp = existingRaw ? existingRaw.data : null;
         if (existingApp) {
           if (!isValidStatusTransition(existingApp.status, app.status, req.user.role)) {
             console.warn(`[Status Engine Block] Role "${req.user.role}" attempted invalid lifecycle transition from "${existingApp.status}" to "${app.status}" for app "${app.id}"`);
@@ -1631,26 +1605,26 @@ router.post('/api/db', verifySession, async (req, res) => {
     if (payload.recycleBin && Array.isArray(payload.recycleBin)) {
       for (const item of payload.recycleBin) {
         if (item.type === 'application' && item.appData) {
-          await Application.deleteOne({ id: item.appData.id }, options);
-          await ApplicationAnswer.deleteMany({ applicationId: item.appData.id }, options);
+          await prisma.application.delete({ where: { id: item.appData.id } }).catch(() => {});
+          await prisma.$executeRaw`DELETE FROM "ApplicationAnswer" WHERE "data"->>'applicationId' = ${item.appData.id}`;
         } else if (item.type === 'user' && item.userData) {
-          await User.deleteOne({ id: item.userData.id }, options);
-          await Assignment.deleteMany({ userId: item.userData.id }, options);
-          await Notification.deleteMany({ userId: item.userData.id }, options);
+          await prisma.user.delete({ where: { id: item.userData.id } }).catch(() => {});
+          await prisma.assignment.deleteMany({ where: { userId: item.userData.id } });
+          await prisma.notification.deleteMany({ where: { userId: item.userData.id } });
         } else if (item.type === 'department' && item.departmentData) {
-          await Department.deleteOne({ id: item.departmentData.id }, options);
+          await prisma.department.delete({ where: { id: item.departmentData.id } }).catch(() => {});
         } else if (item.type === 'assignment' && item.assignmentData) {
-          await Assignment.deleteOne({ id: item.assignmentData.id }, options);
+          await prisma.assignment.delete({ where: { id: item.assignmentData.id } }).catch(() => {});
         } else if (item.type === 'reformArea' && item.reformAreaData) {
-          await ReformArea.deleteOne({ id: item.reformAreaData.id }, options);
-          await FormField.deleteMany({ reformAreaId: item.reformAreaData.id }, options);
+          await prisma.reformArea.delete({ where: { id: item.reformAreaData.id } }).catch(() => {});
+          await prisma.$executeRaw`DELETE FROM "FormField" WHERE "data"->>'reformAreaId' = ${item.reformAreaData.id}`;
         } else if (item.type === 'field' && item.fieldData) {
-          await FormField.deleteOne({ id: item.fieldData.id }, options);
+          await prisma.formField.delete({ where: { id: item.fieldData.id } }).catch(() => {});
         } else if (item.type === 'edition' && item.editionData) {
-          await Edition.deleteOne({ id: item.editionData.id }, options);
-          await ReformArea.deleteMany({ editionId: item.editionData.id }, options);
-          await FormField.deleteMany({ editionId: item.editionData.id }, options);
-          await Application.deleteMany({ editionId: item.editionData.id }, options);
+          await prisma.edition.delete({ where: { id: item.editionData.id } }).catch(() => {});
+          await prisma.$executeRaw`DELETE FROM "ReformArea" WHERE "data"->>'editionId' = ${item.editionData.id}`;
+          await prisma.$executeRaw`DELETE FROM "FormField" WHERE "data"->>'editionId' = ${item.editionData.id}`;
+          await prisma.$executeRaw`DELETE FROM "Application" WHERE "data"->>'editionId' = ${item.editionData.id}`;
         }
       }
     }
@@ -1663,16 +1637,16 @@ router.post('/api/db', verifySession, async (req, res) => {
 
       for (const app of payload.applications) {
         const user = payload.users?.find(u => u.id === app.userId) ||
-          await User.findOne({ id: app.userId }, null, options).lean();
+          await prisma.user.findUnique({ where: { id: app.userId } });
 
         app.state = user?.state || '';
         app.organization = user?.organization || '';
 
-        const isUserRole = user?.role === 'user';
+        const isUserRole = user?.role === 'user' || user?.role === 'USER';
         const key = isUserRole
           ? (app.state
             ? `${app.editionId}_state_${app.state}`
-            : `${app.editionId}_org_${app.organization}`)
+            : (app.organization ? `${app.editionId}_org_${app.organization}` : `${app.editionId}_user_${app.userId}`))
           : `${app.editionId}_user_${app.userId}`;
 
         if (!groups[key]) {
@@ -1716,8 +1690,12 @@ router.post('/api/db', verifySession, async (req, res) => {
         if (payload.applicationAnswers) {
           payload.applicationAnswers = payload.applicationAnswers.filter(ans => !deletedAppIds.includes(ans.applicationId));
         }
-        await Application.deleteMany({ id: { $in: deletedAppIds } }, options);
-        await ApplicationAnswer.deleteMany({ applicationId: { $in: deletedAppIds } }, options);
+        await prisma.application.deleteMany({ where: { id: { in: deletedAppIds } } });
+        
+        // Ensure answers for deleted applications are also removed safely using executeRaw for JSON
+        for (const deletedId of deletedAppIds) {
+          await prisma.$executeRaw`DELETE FROM "ApplicationAnswer" WHERE "data"->>'applicationId' = ${deletedId}`;
+        }
       }
     }
 
@@ -1827,16 +1805,13 @@ router.post('/api/db', verifySession, async (req, res) => {
       // Sync user applications (insert/update only)
       if (payload.applications) {
         for (const app of payload.applications) {
-          const query = { id: app.id };
           const updateObj = { ...app };
           delete updateObj._id;
-          const existingApp = await prisma.application.findFirst({ where: query });
-          if (existingApp) {
-            await prisma.application.update({ where: { id: existingApp.id }, data: updateObj });
-          } else {
-             if (!updateObj.id) updateObj.id = 'app_' + Date.now();
-             await prisma.application.create({ data: updateObj });
-          }
+          await prisma.application.upsert({
+            where: { id: app.id },
+            update: { data: updateObj },
+            create: { id: app.id, data: updateObj }
+          });
         }
       }
 
@@ -1847,12 +1822,14 @@ router.post('/api/db', verifySession, async (req, res) => {
         if (payload.applications) {
           activeAppIds = payload.applications.map(a => a.id);
         } else {
-          const userApps = await Application.find({ userId: req.user.id }, null, options).lean();
+          const userAppsRaw = await prisma.application.findMany();
+          const userApps = userAppsRaw.map(a => a.data).filter(a => a.userId === req.user.id);
           activeAppIds = userApps.map(a => a.id);
         }
 
         for (let ans of payload.applicationAnswers) {
-          const existingAns = await ApplicationAnswer.findOne({ id: ans.id }, null, options).lean();
+          const existingAnsRaw = await prisma.applicationAnswer.findUnique({ where: { id: ans.id } });
+          const existingAns = existingAnsRaw ? existingAnsRaw.data : null;
           if (existingAns && existingAns.files && existingAns.files.length > 0) {
             ans.files = ans.files || [];
             ans.files = ans.files.map(f => {
@@ -1866,16 +1843,24 @@ router.post('/api/db', verifySession, async (req, res) => {
         }
 
         for (const ans of payload.applicationAnswers) {
-          const query = { id: ans.id };
           const updateObj = { ...ans };
           delete updateObj._id;
-          await ApplicationAnswer.findOneAndUpdate(query, { $set: updateObj }, { upsert: true, returnDocument: 'after', ...options });
+          await prisma.applicationAnswer.upsert({
+            where: { id: ans.id },
+            update: { data: updateObj },
+            create: { id: ans.id, data: updateObj }
+          });
         }
 
-        await ApplicationAnswer.deleteMany({
-          applicationId: { $in: activeAppIds },
-          id: { $nin: payloadAnsIds }
-        }, options);
+        if (activeAppIds.length > 0) {
+          const allAnswers = await prisma.applicationAnswer.findMany();
+          const ansToDelete = allAnswers
+            .filter(a => a.data && activeAppIds.includes(a.data.applicationId) && !payloadAnsIds.includes(a.id))
+            .map(a => a.id);
+          if (ansToDelete.length > 0) {
+            await prisma.applicationAnswer.deleteMany({ where: { id: { in: ansToDelete } } });
+          }
+        }
       }
 
       // Sync user messages
@@ -1994,7 +1979,7 @@ router.post('/api/db', verifySession, async (req, res) => {
           id: u.id,
           username: u.username,
           email: u.email || null,
-          role: u.role,
+          role: u.role ? String(u.role).toUpperCase() : (isAdminType ? 'ADMIN' : 'USER'),
           name: u.name || null,
           organization: u.organization || null,
           state: u.state || null,
@@ -2143,6 +2128,7 @@ router.post('/api/db', verifySession, async (req, res) => {
         }
       }
       if (Array.isArray(payload.assignments)) {
+        console.log("=== INCOMING ASSIGNMENTS PAYLOAD ===", JSON.stringify(payload.assignments, null, 2));
         for (const asn of payload.assignments) {
           await prisma.assignment.upsert({
             where: { id: asn.id },
